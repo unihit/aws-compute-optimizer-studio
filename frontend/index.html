@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWS Compute Optimizer FinOps Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class'
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <style>
+    :root {
+      --bg-primary: #f8fafc;
+      --bg-header: rgba(255, 255, 255, 0.92);
+      --bg-card: rgba(255, 255, 255, 0.95);
+      --bg-subtle: #f1f5f9;
+      --border-card: #e2e8f0;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+    }
+    html.dark {
+      --bg-primary: #0b1120;
+      --bg-header: rgba(2, 6, 23, 0.90);
+      --bg-card: rgba(15, 23, 42, 0.85);
+      --bg-subtle: #0f172a;
+      --border-card: rgba(51, 65, 85, 0.7);
+      --text-main: #f1f5f9;
+      --text-sub: #94a3b8;
+    }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06);
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+    .tab-active {
+      background: #2563eb !important;
+      color: #ffffff !important;
+      border-color: #3b82f6 !important;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-subtle); }
+    ::-webkit-scrollbar-thumb { background: #64748b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur px-6 py-3.5 transition-colors">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-blue-600/20 font-extrabold text-lg text-white">
+          CO
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">AWS Compute Optimizer FinOps Studio</h1>
+            <span id="sourceBadge" class="px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+              DEMO DATASET
+            </span>
+          </div>
+          <p id="accountSubtext" class="text-xs text-slate-500 dark:text-slate-400">
+            Account: 123456789012 | Region: ap-northeast-2 | Read-Only 안전 진단 모드
+          </p>
+        </div>
+      </div>
+
+      <!-- Right Controls: Theme Toggle, Exchange Rate, Connection Modal, Report Buttons -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Light / Dark Mode Toggle Button -->
+        <button id="themeToggleBtn" onclick="toggleTheme()"
+          title="라이트 모드 / 다크 모드 전환"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 cursor-pointer transition">
+          <span id="themeToggleIcon">☀️</span>
+          <span id="themeToggleLabel">라이트 모드</span>
+        </button>
+
+        <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs">
+          <span class="text-slate-600 dark:text-slate-400 font-medium">환율:</span>
+          <input id="krwRateInput" type="number" value="1384.5" step="0.5"
+            onchange="onManualRateChange()"
+            class="w-16 bg-transparent text-orange-600 dark:text-orange-400 font-extrabold focus:outline-none text-right" />
+          <span class="text-slate-500">원</span>
+          <span id="fxSourceBadge" title="AWS Invoicing API (ListInvoiceSummaries) 확정 청구서 환율"
+            class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 whitespace-nowrap">
+            🧾 AWS 청구서 환율
+          </span>
+        </div>
+
+        <button onclick="openCloudShellModal()"
+          class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm cursor-pointer transition">
+          <span>☁️ CloudShell (리전 자동감지) / 임시권한 점검</span>
+        </button>
+
+        <div class="h-5 w-[1px] bg-slate-300 dark:bg-slate-800 mx-1"></div>
+
+        <!-- Export Buttons -->
+        <button onclick="downloadReport('excel')"
+          class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer transition">
+          <span>📊 Excel (.xlsx) 다운로드</span>
+        </button>
+
+        <button onclick="downloadReport('word')"
+          class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm cursor-pointer transition">
+          <span>📝 Word (.docx) 보고서 다운로드</span>
+        </button>
+
+        <button onclick="openHtmlReport()"
+          class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 cursor-pointer transition">
+          <span>🖨️ 경영진 요약 (HTML/PDF 인쇄)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto px-6 py-6 space-y-6">
+
+    <!-- Compute Optimizer Enrollment Alert Banner (Shown prominently if Opted-Out / Inactive) -->
+    <div id="coStatusBanner" class="hidden rounded-xl p-4 border border-amber-500/50 bg-amber-500/15 text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-start gap-3">
+        <span class="text-xl">⚠️</span>
+        <div>
+          <div class="text-sm font-extrabold">AWS Compute Optimizer 미가입(Opt-Out) 계정 안내</div>
+          <p id="coStatusNoteText" class="text-xs mt-1 leading-relaxed">
+            현재 계정에 Compute Optimizer가 비활성화되어 있습니다. 콘솔 또는 CLI(<code>aws compute-optimizer update-enrollment-status --status Active</code>)에서 활성화한 뒤 <strong>14일간 CloudWatch 메트릭이 수집되면</strong> 정밀 라이트사이징 추천을 받아보실 수 있습니다. (현재 화면에는 Extended Support, EIP/ALB/NAT, 노후 스냅샷/로그/S3 등 즉시 진단 가능한 항목들이 표시됩니다.)
+          </p>
+        </div>
+      </div>
+      <span class="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/25 border border-amber-500/40 whitespace-nowrap">
+        활성화 후 14일 뒤 정밀 진단 권장
+      </span>
+    </div>
+
+    <!-- KPI Cards Row -->
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="glass-card rounded-xl p-5 border-l-4 border-l-emerald-500">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <span>예상 월간 총 절감 가능액 (Monthly)</span>
+          <span id="kpiBillPctBadge" class="text-orange-700 dark:text-orange-300 bg-orange-500/20 border border-orange-500/40 px-2 py-0.5 rounded-full font-extrabold">Rank 1 권고 기준</span>
+        </div>
+        <div id="kpiMonthlyUsd" class="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">$0.00</div>
+        <div id="kpiMonthlyKrw" class="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-1">약 ₩0 / 월</div>
+        <div id="kpiLastMonthBillSub" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">최근 30일 총 청구액 집계 중</div>
+      </div>
+
+      <div class="glass-card rounded-xl p-5 border-l-4 border-l-blue-500">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <span>예상 연간 총 절감 효과 (Annual 12M)</span>
+          <span class="text-blue-700 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-semibold">ROI 기대효과</span>
+        </div>
+        <div id="kpiAnnualUsd" class="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">$0.00</div>
+        <div id="kpiAnnualKrw" class="text-sm font-semibold text-blue-600 dark:text-blue-400 mt-1">약 ₩0 / 년</div>
+      </div>
+
+      <div class="glass-card rounded-xl p-5 border-l-4 border-l-cyan-500">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <span>즉시 실행 절감액 (Quick Wins)</span>
+          <span class="text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded font-semibold">난이도 Low 이하</span>
+        </div>
+        <div id="kpiQuickUsd" class="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">$0.00</div>
+        <div id="kpiQuickSub" class="text-xs text-slate-500 dark:text-slate-400 mt-1.5">아키텍처 변경 없이 즉시 절감 가능</div>
+      </div>
+
+      <div class="glass-card rounded-xl p-5 border-l-4 border-l-amber-500">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <span>진단 리소스 현황 및 성능 위험</span>
+          <span class="text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded font-semibold">최근 14일 메트릭</span>
+        </div>
+        <div class="flex items-baseline gap-2 mt-2">
+          <span id="kpiOptCount" class="text-3xl font-extrabold text-slate-900 dark:text-white">0</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400">/ <span id="kpiTotalCount">0</span> 개 최적화 대상</span>
+        </div>
+        <button id="kpiRiskCount" type="button" onclick="jumpToUnderprovisioned()"
+          title="클릭 시 하단 리소스 목록에서 성능 병목(Underprovisioned) 대상만 필터링하여 이동합니다"
+          class="mt-2 w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-500/60 text-xs font-bold text-orange-700 dark:text-orange-300 cursor-pointer transition group">
+          <span id="kpiRiskCountText">🔥 성능 병목(Underprovisioned) 스케일업 권고: 0건</span>
+          <span class="text-[10px] font-semibold text-orange-600 dark:text-orange-400 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">바로 이동 ↓</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Extended Support, Network (EIP / ALB / NAT) & Storage Lifecycle Audit Banner -->
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div onclick="setCategoryFilter('ExtendedSupport')" class="glass-card rounded-xl p-4 border border-purple-500/30 cursor-pointer hover:border-purple-500/60 transition flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 whitespace-nowrap">⏳ Extended Support</span>
+            <span class="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">EKS · RDS 구버전</span>
+          </div>
+          <div id="auditExtText" class="text-xs font-bold text-slate-900 dark:text-white mt-2">
+            EKS / RDS Extended Support 대상 0건 감지
+          </div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">버전 업그레이드 시 추가 요금 제거</div>
+        </div>
+        <div class="text-right whitespace-nowrap pl-2">
+          <div id="auditExtUsd" class="text-base font-extrabold text-orange-600 dark:text-orange-400">$0.00<span class="text-[10px] font-normal text-slate-400">/월</span></div>
+          <div id="auditExtKrw" class="text-[10px] font-semibold text-slate-500 dark:text-slate-300">₩0/월</div>
+        </div>
+      </div>
+
+      <div onclick="setCategoryFilter('Network')" class="glass-card rounded-xl p-4 border border-amber-500/30 cursor-pointer hover:border-amber-500/60 transition flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 whitespace-nowrap">🌐 미사용 EIP 점검</span>
+            <span class="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Public IPv4</span>
+          </div>
+          <div id="auditEipText" class="text-xs font-bold text-slate-900 dark:text-white mt-2">
+            전체 EIP 0개 중 미연결 0개 감지
+          </div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">미연결 EIP당 월 $3.65 유휴 과금</div>
+        </div>
+        <div class="text-right whitespace-nowrap pl-2">
+          <div id="auditEipBadge" class="text-base font-extrabold text-orange-600 dark:text-orange-400">0 / 0개</div>
+          <div class="text-[10px] text-slate-500 dark:text-slate-400">미사용 / 전체</div>
+        </div>
+      </div>
+
+      <div onclick="setCategoryFilter('Network')" class="glass-card rounded-xl p-4 border border-cyan-500/30 cursor-pointer hover:border-cyan-500/60 transition flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 whitespace-nowrap">⚖️ ALB · NAT GW 점검</span>
+            <span class="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">네트워크 고정비</span>
+          </div>
+          <div id="auditAlbText" class="text-xs font-bold text-slate-900 dark:text-white mt-2">
+            유휴 ALB 0/0개 · NAT GW 0/0개
+          </div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">유휴 LB/NAT 통합 및 S3 엔드포인트</div>
+        </div>
+        <div class="text-right whitespace-nowrap pl-2">
+          <div id="auditAlbBadge" class="text-base font-extrabold text-orange-600 dark:text-orange-400">0건</div>
+          <div class="text-[10px] text-slate-500 dark:text-slate-400">최적화 대상</div>
+        </div>
+      </div>
+
+      <div onclick="setCategoryFilter('StorageLifecycle')" class="glass-card rounded-xl p-4 border border-emerald-500/30 cursor-pointer hover:border-emerald-500/60 transition flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 whitespace-nowrap">🗄️ 노후 스냅샷 · 로그 · S3</span>
+          </div>
+          <div id="auditStgText" class="text-xs font-bold text-slate-900 dark:text-white mt-2">
+            90일+ 스냅샷 0개 · 무기한 로그 0개
+          </div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">EBS/RDS 스냅샷 · CW Logs · S3 수명주기</div>
+        </div>
+        <div class="text-right whitespace-nowrap pl-2">
+          <div id="auditStgUsd" class="text-base font-extrabold text-orange-600 dark:text-orange-400">$0.00<span class="text-[10px] font-normal text-slate-400">/월</span></div>
+          <div id="auditStgKrw" class="text-[10px] font-semibold text-slate-500 dark:text-slate-300">₩0/월</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Charts & 3-Phase Roadmap Section -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <!-- Bar Chart: Savings by Service -->
+      <div class="glass-card rounded-xl p-5 lg:col-span-5 flex flex-col">
+        <div class="flex items-center justify-between mb-3 gap-2">
+          <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">리소스 유형별 월간 절감 기회 (USD)</h2>
+          <span id="categoryChartSub" class="text-[11px] text-slate-500 dark:text-slate-400 truncate">절감액 큰 순 정렬</span>
+        </div>
+        <div class="flex-1 min-h-[220px] relative">
+          <canvas id="categorySavingsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Doughnut Chart: Finding Status -->
+      <div class="glass-card rounded-xl p-5 lg:col-span-3 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200">Compute Optimizer 진단 분포</h2>
+        </div>
+        <div class="flex-1 min-h-[220px] relative flex items-center justify-center">
+          <canvas id="findingDistChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 3-Phase Actionable Roadmap -->
+      <div class="glass-card rounded-xl p-5 lg:col-span-4 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200">🚀 단계별 비용 최적화 실행 가이드</h2>
+            <span class="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Well-Architected 기반</span>
+          </div>
+          <div id="roadmapList" class="space-y-2.5 text-xs">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <div class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+          <span>🔒 모든 진단은 Read-Only(`get-*`) API만 사용합니다.</span>
+          <button onclick="openCloudShellModal()" class="text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">실제 계정 연결 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Resource Explorer & Filter Table -->
+    <section id="resourceTableSection" class="glass-card rounded-xl p-5 space-y-4 transition-all duration-300">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <!-- Category Filter Tabs -->
+        <div class="flex flex-wrap items-center gap-1.5" id="categoryTabs">
+          <button onclick="setCategoryFilter('ALL')" data-cat="ALL" class="tab-btn tab-active px-3.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 cursor-pointer transition">
+            전체 리소스
+          </button>
+          <button onclick="setCategoryFilter('EC2')" data-cat="EC2" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            Amazon EC2
+          </button>
+          <button onclick="setCategoryFilter('RDS')" data-cat="RDS" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            RDS / Aurora
+          </button>
+          <button onclick="setCategoryFilter('ExtendedSupport')" data-cat="ExtendedSupport" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            ⏳ Extended Support
+          </button>
+          <button onclick="setCategoryFilter('Network')" data-cat="Network" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            🌐 EIP · ALB · NAT
+          </button>
+          <button onclick="setCategoryFilter('StorageLifecycle')" data-cat="StorageLifecycle" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            🗄️ 스냅샷 · 로그 · S3
+          </button>
+          <button onclick="setCategoryFilter('EBS')" data-cat="EBS" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            Amazon EBS
+          </button>
+          <button onclick="setCategoryFilter('Idle')" data-cat="Idle" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            🧹 Idle (유휴 리소스)
+          </button>
+          <button onclick="setCategoryFilter('ECS')" data-cat="ECS" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            ECS Fargate
+          </button>
+          <button onclick="setCategoryFilter('Lambda')" data-cat="Lambda" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition">
+            AWS Lambda
+          </button>
+        </div>
+
+        <!-- Search, EC2 Graviton Toggle, Exclude Optimized Toggle & Finding Filter -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          <!-- EC2 Graviton Toggle -->
+          <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs select-none"
+            title="체크 해제 시 EC2 권고에서 Graviton(ARM64) 전환을 제외하고 동일 아키텍처(x86) 리사이징 옵션만 제안합니다.">
+            <input id="ec2GravitonToggle" type="checkbox" checked onchange="toggleEc2Graviton(this.checked)"
+              class="w-3.5 h-3.5 accent-orange-500 rounded cursor-pointer" />
+            <span class="font-semibold text-slate-700 dark:text-slate-200">EC2 Graviton(ARM64) 제안 포함</span>
+          </label>
+
+          <!-- Exclude Optimized Toggle -->
+          <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs select-none"
+            title="체크 시 이미 적정 스펙(Optimized)인 리소스를 목록 및 발행 리포트에서 제외하고 조치가 필요한 대상만 표시합니다.">
+            <input id="excludeOptimizedToggle" type="checkbox" onchange="toggleExcludeOptimized(this.checked)"
+              class="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer" />
+            <span class="font-semibold text-slate-700 dark:text-slate-200">✅ 적정(Optimized) 리소스 제외</span>
+          </label>
+
+          <select id="findingFilter" onchange="renderTable()"
+            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
+            <option value="ALL">모든 진단 상태 (Findings)</option>
+            <option value="SAVINGS">💰 비용 절감 가능 항목만</option>
+            <option value="ExtendedSupport">⏳ Extended Support (EKS·RDS 버전 업데이트)</option>
+            <option value="Overprovisioned">🧊 Overprovisioned (과다 사양)</option>
+            <option value="NotOptimized">⚠️ NotOptimized (최적화 필요)</option>
+            <option value="Idle">🧹 Idle / Unattached (유휴·미연결)</option>
+            <option value="Underprovisioned">🔥 Underprovisioned (성능 위험 / 스펙 부족)</option>
+          </select>
+
+          <input id="searchInput" type="text" oninput="renderTable()"
+            placeholder="리소스명, ID, 태그(Owner/Env) 검색..."
+            class="w-64 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+
+      <!-- Detailed Recommendations Table -->
+      <div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-100 dark:bg-slate-900/90 text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 whitespace-nowrap">
+              <th class="py-3 px-4">유형</th>
+              <th class="py-3 px-4">리소스명 / ID / 태그</th>
+              <th class="py-3 px-4 min-w-[160px]">진단 결과</th>
+              <th class="py-3 px-4 min-w-[240px]">현재 스펙 → 권고 스펙 (Rank 1)</th>
+              <th class="py-3 px-4">최근 14일 피크 사용률 / 근거</th>
+              <th class="py-3 px-4">난이도</th>
+              <th class="py-3 px-4 text-right">예상 월 절감액 (연간)</th>
+              <th class="py-3 px-4">실행 가이드</th>
+            </tr>
+          </thead>
+          <tbody id="resourceTableBody" class="divide-y divide-slate-200 dark:divide-slate-800/70 text-xs">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- CloudShell & Ephemeral Credentials Modal -->
+  <div id="cloudShellModal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-5">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            ☁️ AWS CloudShell 명령어 (리전 자동 감지) & 임시 권한 안전 점검 센터
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            영구 Access Key를 저장하지 않고, CloudShell 실행 리전을 자동으로 감지하여 원클릭 스냅샷 또는 1회성 STS 세션으로 조회(`get-*`)합니다.
+          </p>
+        </div>
+        <button onclick="closeCloudShellModal()" class="text-slate-400 hover:text-slate-700 dark:hover:text-white text-lg font-bold px-2 cursor-pointer">✕</button>
+      </div>
+
+      <!-- Mode Switcher inside Modal -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Method A: CloudShell Script + JSON Upload (Recommended) -->
+        <div class="bg-slate-50 dark:bg-slate-950/80 border border-indigo-500/40 rounded-xl p-5 flex flex-col justify-between space-y-4">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
+                방식 A (권장 · 리전 자동 감지)
+              </span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">자격 증명 외부 입력 불필요</span>
+            </div>
+
+            <!-- Step 1 Card -->
+            <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 space-y-3.5 shadow-sm">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-extrabold flex items-center justify-center shrink-0">1</span>
+                    <h4 class="text-sm font-bold text-slate-900 dark:text-white">AWS CloudShell 수집 명령어 복사</h4>
+                  </div>
+                  <p class="text-xs text-slate-600 dark:text-slate-400 mt-1.5 leading-relaxed">
+                    AWS 콘솔 상단 <strong>CloudShell</strong>에 붙여넣으면 실행 중인 리전(<code>$AWS_REGION</code>)을 자동 감지하여 6대 리소스 권고사항을 단일 JSON 파일로 생성합니다.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Auto-Detect Region Info Pill & Primary Copy Action -->
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <div class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
+                  <span>🌐 실행 리전 자동 감지 (<code>$AWS_REGION</code>)</span>
+                </div>
+                <button id="copyCsBtn" onclick="copyCloudShellScript()"
+                  class="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-sm cursor-pointer transition">
+                  <span>📋 수집 명령어 원클릭 복사</span>
+                </button>
+              </div>
+
+              <!-- Collapsible Script Viewer (Redesigned Card Accordion) -->
+              <details class="group rounded-xl bg-slate-50/90 dark:bg-slate-950/90 border border-slate-200/90 dark:border-slate-800 hover:border-indigo-500/40 transition overflow-hidden">
+                <summary class="cursor-pointer list-none [&::-webkit-details-marker]:hidden flex items-center justify-between gap-3 px-3.5 py-2.5 select-none">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="w-6 h-6 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-xs shrink-0">🔍</span>
+                    <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <span class="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
+                        CloudShell 안전 점검 스크립트 원문 보기
+                      </span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
+                        100% Read-Only
+                      </span>
+                    </div>
+                  </div>
+                  <span class="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-2xs group-hover:border-indigo-500/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition">
+                    <span class="group-open:hidden">펼치기 ▼</span>
+                    <span class="hidden group-open:inline">접기 ▲</span>
+                  </span>
+                </summary>
+                <div class="px-3.5 pb-3.5 pt-1 border-t border-slate-200/70 dark:border-slate-800/80">
+                  <pre id="cloudShellCodeBox" class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-[11px] text-emerald-300 font-mono overflow-x-auto max-h-48 leading-relaxed"></pre>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- Step 2 Card -->
+          <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 space-y-3 shadow-sm">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center shrink-0">2</span>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">CloudShell에서 다운로드한 JSON 스냅샷 업로드</h4>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              CloudShell 우측 상단 <strong>[Actions] → [Download file]</strong>에서 추출된 JSON 파일을 다운로드한 후 아래에서 선택하세요.
+            </p>
+
+            <!-- Custom Interactive File Picker Box -->
+            <label for="snapshotFileInput"
+              class="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/90 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500/80 hover:bg-emerald-500/5 cursor-pointer transition group">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="px-3 py-1.5 rounded-lg bg-indigo-600 group-hover:bg-indigo-500 text-white text-xs font-extrabold shadow-xs whitespace-nowrap cursor-pointer transition flex items-center gap-1.5">
+                  <span>📂</span>
+                  <span>JSON 파일 선택</span>
+                </span>
+                <span id="selectedSnapshotFileName" class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
+                  선택된 파일 없음 (.json)
+                </span>
+              </div>
+              <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap pr-1 hidden sm:inline">클릭하여 찾기 →</span>
+            </label>
+            <input id="snapshotFileInput" type="file" accept=".json" onchange="onSnapshotFileChange(this)" class="hidden" />
+
+            <button onclick="uploadSnapshotFile()"
+              class="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold cursor-pointer transition shadow-sm flex items-center justify-center gap-1.5">
+              <span>🚀 스냅샷 JSON 불러와서 리포트/대시보드 갱신</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Method B: Temporary STS Token / Local Profile Direct Scan -->
+        <div class="bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                방식 B (실시간 API 호출)
+              </span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400">메모리 1회성 · 디스크 미저장</span>
+            </div>
+            <h4 class="text-sm font-bold text-slate-900 dark:text-white">STS 임시 자격 증명 또는 로컬 AWS SSO 프로파일 연동</h4>
+            <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              SSO 포털에서 발급받은 임시 세션 토큰(<code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>)을 입력해 즉시 조회합니다.
+            </p>
+
+            <div class="space-y-2 text-xs">
+              <div>
+                <label class="block text-slate-600 dark:text-slate-400 mb-1">대상 리전 (실시간 API 호출용)</label>
+                <select id="liveRegionSelect"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-900 dark:text-white cursor-pointer">
+                  <option value="ap-northeast-2">ap-northeast-2 (서울)</option>
+                  <option value="ap-south-1">ap-south-1 (뭄바이)</option>
+                  <option value="ap-northeast-1">ap-northeast-1 (도쿄)</option>
+                  <option value="ap-southeast-1">ap-southeast-1 (싱가포르)</option>
+                  <option value="us-east-1">us-east-1 (버지니아)</option>
+                  <option value="us-west-2">us-west-2 (오레곤)</option>
+                  <option value="eu-west-1">eu-west-1 (아일랜드)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-slate-600 dark:text-slate-400 mb-1">연동 방식</label>
+                <select id="liveModeSelect" onchange="toggleLiveInputs()"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-900 dark:text-white cursor-pointer">
+                  <option value="sts">STS 임시 자격 증명 (AccessKey + SecretKey + SessionToken)</option>
+                  <option value="profile">로컬 AWS CLI / SSO Profile (`~/.aws/config`)</option>
+                </select>
+              </div>
+
+              <div id="stsInputGroup" class="space-y-2">
+                <div>
+                  <label class="block text-slate-600 dark:text-slate-400 mb-1">AWS_ACCESS_KEY_ID (ASIA...)</label>
+                  <input id="stsAccessKey" type="password" placeholder="ASIA..."
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-900 dark:text-white font-mono" />
+                </div>
+                <div>
+                  <label class="block text-slate-600 dark:text-slate-400 mb-1">AWS_SECRET_ACCESS_KEY</label>
+                  <input id="stsSecretKey" type="password" placeholder="임시 Secret Access Key"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-900 dark:text-white font-mono" />
+                </div>
+                <div>
+                  <label class="block text-slate-600 dark:text-slate-400 mb-1">AWS_SESSION_TOKEN</label>
+                  <input id="stsSessionToken" type="password" placeholder="임시 Session Token"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-900 dark:text-white font-mono" />
+                </div>
+              </div>
+
+              <div id="profileInputGroup" class="hidden">
+                <label class="block text-slate-600 dark:text-slate-400 mb-1">AWS CLI Profile 이름 (비워두면 default)</label>
+                <input id="awsProfileName" type="text" placeholder="예: default 또는 prod-sso"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-900 dark:text-white font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div id="scanStatusMsg" class="text-xs text-amber-600 dark:text-amber-400 hidden"></div>
+            <button onclick="runLiveAwsScan()"
+              class="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer transition shadow-sm">
+              🔍 Read-Only 실시간 Compute Optimizer 진단 실행
+            </button>
+            <button onclick="resetDemoData()"
+              class="w-full py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium cursor-pointer transition">
+              🔄 샘플 데모 데이터셋으로 복원
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let dashboardState = null;
+    let selectedCategory = 'ALL';
+    let categoryChartInstance = null;
+    let findingChartInstance = null;
+
+    // Theme management (Light / Dark Mode)
+    function initTheme() {
+      const saved = localStorage.getItem('co_studio_theme') || 'dark';
+      applyTheme(saved);
+    }
+
+    function applyTheme(theme) {
+      const htmlEl = document.documentElement;
+      const iconEl = document.getElementById('themeToggleIcon');
+      const labelEl = document.getElementById('themeToggleLabel');
+
+      if (theme === 'light') {
+        htmlEl.classList.remove('dark');
+        iconEl.textContent = '🌙';
+        labelEl.textContent = '다크 모드';
+      } else {
+        htmlEl.classList.add('dark');
+        iconEl.textContent = '☀️';
+        labelEl.textContent = '라이트 모드';
+      }
+      localStorage.setItem('co_studio_theme', theme);
+      if (dashboardState) {
+        renderCharts();
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.contains('dark');
+      applyTheme(isDark ? 'light' : 'dark');
+    }
+
+    function isDarkMode() {
+      return document.documentElement.classList.contains('dark');
+    }
+
+    let currentFxSource = 'AWS Invoice (직전 마감 청구서 확정 환율)';
+
+    function getKrwRate() {
+      const val = parseFloat(document.getElementById('krwRateInput').value);
+      return isNaN(val) || val <= 0 ? 1384.5 : val;
+    }
+
+    function applyExchangeRateFromState() {
+      if (!dashboardState || !dashboardState.exchangeRateInfo) return;
+      const fx = dashboardState.exchangeRateInfo;
+      if (fx.rate && fx.rate > 0) {
+        document.getElementById('krwRateInput').value = fx.rate;
+      }
+      currentFxSource = fx.source || 'AWS Invoice 기준환율';
+      const badge = document.getElementById('fxSourceBadge');
+      if (badge) {
+        badge.title = currentFxSource;
+        badge.textContent = fx.billingPeriod ? `🧾 AWS 청구서 (${fx.billingPeriod})` : '🧾 AWS 청구서 기준환율';
+        badge.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 whitespace-nowrap';
+      }
+    }
+
+    function onManualRateChange() {
+      currentFxSource = '사용자 수동 지정 환율';
+      const badge = document.getElementById('fxSourceBadge');
+      if (badge) {
+        badge.textContent = '✏️ 수동 입력';
+        badge.title = currentFxSource;
+        badge.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 whitespace-nowrap';
+      }
+      renderAll();
+    }
+
+    function fmtUsd(val) {
+      return '$' + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtKrw(usdVal) {
+      const krw = Math.round(Number(usdVal || 0) * getKrwRate());
+      return '₩' + krw.toLocaleString('ko-KR');
+    }
+
+    async function fetchDashboard() {
+      initTheme();
+      const res = await fetch('/api/dashboard');
+      dashboardState = await res.json();
+      applyExchangeRateFromState();
+      renderAll();
+    }
+
+    function renderAll() {
+      if (!dashboardState) return;
+      const meta = dashboardState.metadata || {};
+      const kpis = dashboardState.kpis || {};
+      const ce = dashboardState.costExplorer || {};
+
+      // Compute Optimizer Enrollment Status Banner
+      const coBanner = document.getElementById('coStatusBanner');
+      if (meta.computeOptimizerStatus && meta.computeOptimizerStatus !== 'Active') {
+        coBanner.classList.remove('hidden');
+        document.getElementById('coStatusNoteText').textContent = meta.computeOptimizerNote || '현재 계정에 Compute Optimizer가 미가입되어 있습니다. 활성화 후 14일 뒤 정밀 라이트사이징 추천을 받을 수 있습니다.';
+      } else {
+        coBanner.classList.add('hidden');
+      }
+
+      const modeMap = {
+        demo: 'DEMO DATASET (시연 데이터)',
+        cloudshell_snapshot: 'CLOUDSHELL SNAPSHOT (실제 계정)',
+        live_sts: 'LIVE STS SESSION (실시간 연결)',
+        aws_profile: 'AWS SSO / PROFILE (실시간 연결)'
+      };
+      document.getElementById('sourceBadge').textContent = modeMap[meta.sourceMode] || meta.sourceMode;
+      document.getElementById('accountSubtext').textContent =
+        `Account: ${meta.accountId} (${meta.accountAlias}) | Region: ${meta.region} | CO 상태: ${meta.computeOptimizerStatus || 'Active'} | 100% Read-Only 안전 점검`;
+
+      document.getElementById('kpiMonthlyUsd').textContent = fmtUsd(kpis.totalMonthlySavingsUsd);
+      document.getElementById('kpiMonthlyKrw').textContent = `월 약 ${fmtKrw(kpis.totalMonthlySavingsUsd)} 절감 가능`;
+      if (ce.lastMonthTotalUsd && ce.lastMonthTotalUsd > 0) {
+        document.getElementById('kpiBillPctBadge').textContent = `청구액 대비 -${ce.savingsVsBillPercentage || 0}% 절감`;
+        document.getElementById('kpiLastMonthBillSub').textContent =
+          `최근 30일 총 청구액: ${fmtUsd(ce.lastMonthTotalUsd)} (${fmtKrw(ce.lastMonthTotalUsd)})`;
+      } else {
+        document.getElementById('kpiBillPctBadge').textContent = 'Rank 1 권고 기준';
+        document.getElementById('kpiLastMonthBillSub').textContent = 'Compute Optimizer + FinOps 통합 절감액';
+      }
+
+      document.getElementById('kpiAnnualUsd').textContent = fmtUsd(kpis.totalAnnualSavingsUsd);
+      document.getElementById('kpiAnnualKrw').textContent = `연 약 ${fmtKrw(kpis.totalAnnualSavingsUsd)} 절감 효과`;
+
+      document.getElementById('kpiQuickUsd').textContent = fmtUsd(kpis.quickWinMonthlySavingsUsd) + ' / 월';
+      document.getElementById('kpiQuickSub').textContent = `연간 ${fmtKrw(kpis.quickWinMonthlySavingsUsd * 12)} 즉시 절감 (Low Effort)`;
+
+      document.getElementById('kpiOptCount').textContent = kpis.optimizableResourcesCount || 0;
+      document.getElementById('kpiTotalCount').textContent = kpis.totalResourcesAnalyzed || 0;
+      const riskTextEl = document.getElementById('kpiRiskCountText') || document.getElementById('kpiRiskCount');
+      if (riskTextEl) {
+        riskTextEl.textContent = `🔥 성능 병목(Underprovisioned) 스케일업 권고: ${kpis.performanceRiskCount || 0}건`;
+      }
+
+      const exclToggle = document.getElementById('excludeOptimizedToggle');
+      if (exclToggle && typeof meta.excludeOptimized === 'boolean') {
+        exclToggle.checked = meta.excludeOptimized;
+      }
+      const gravToggle = document.getElementById('ec2GravitonToggle');
+      if (gravToggle && typeof meta.allowEc2Graviton === 'boolean') {
+        gravToggle.checked = meta.allowEc2Graviton;
+      }
+
+      // Extended Support, Network & Storage Lifecycle Audit Banner
+      const extCount = kpis.extendedSupportCount || 0;
+      const extUsd = kpis.extendedSupportMonthlyUsd || 0;
+      document.getElementById('auditExtText').textContent = `EKS / RDS Extended Support 대상 ${extCount}건 감지`;
+      document.getElementById('auditExtUsd').innerHTML = `${fmtUsd(extUsd)}<span class="text-[10px] font-normal text-slate-400">/월</span>`;
+      document.getElementById('auditExtKrw').textContent = `${fmtKrw(extUsd)}/월 · 연 ${fmtKrw(extUsd * 12)}`;
+
+      const totEip = kpis.totalEipCount || 0;
+      const unEip = kpis.unattachedEipCount || 0;
+      document.getElementById('auditEipText').textContent = `전체 EIP ${totEip}개 중 미사용 ${unEip}개 감지`;
+      document.getElementById('auditEipBadge').textContent = `${unEip} / ${totEip}개`;
+
+      const totAlb = kpis.totalAlbCount || 0;
+      const idleAlb = kpis.idleOrNoTargetAlbCount || 0;
+      const totNat = kpis.totalNatGwCount || 0;
+      const idleNat = kpis.idleOrRedundantNatGwCount || 0;
+      document.getElementById('auditAlbText').textContent = `유휴 ALB ${idleAlb}/${totAlb}개 · NAT GW ${idleNat}/${totNat}개`;
+      document.getElementById('auditAlbBadge').textContent = `${idleAlb + idleNat}건 대상`;
+
+      const snapCnt = kpis.agedSnapshotCount || 0;
+      const logCnt = kpis.neverExpireLogGroupCount || 0;
+      const s3Cnt = kpis.s3NoLifecycleBucketCount || 0;
+      const stgUsd = kpis.storageLifecycleMonthlyUsd || 0;
+      document.getElementById('auditStgText').textContent = `90일+ 스냅샷 ${snapCnt}개 · 로그 ${logCnt}개 · S3 ${s3Cnt}개`;
+      document.getElementById('auditStgUsd').innerHTML = `${fmtUsd(stgUsd)}<span class="text-[10px] font-normal text-slate-400">/월</span>`;
+      document.getElementById('auditStgKrw').textContent = `${fmtKrw(stgUsd)}/월 절감`;
+
+      renderCharts();
+      renderRoadmap();
+      renderTable();
+    }
+
+    function renderCharts() {
+      const dark = isDarkMode();
+      const tickColor = dark ? '#cbd5e1' : '#334155';
+      const subTickColor = dark ? '#94a3b8' : '#64748b';
+      const gridColor = dark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.08)';
+
+      const byCat = dashboardState.byCategory || {};
+      // Sort categories by monthlySavingsUsd descending, pushing $0 / empty categories to the end
+      const labels = Object.keys(byCat).sort((a, b) => {
+        const savDiff = (byCat[b].monthlySavingsUsd || 0) - (byCat[a].monthlySavingsUsd || 0);
+        if (savDiff !== 0) return savDiff;
+        const optDiff = (byCat[b].optimizableCount || 0) - (byCat[a].optimizableCount || 0);
+        if (optDiff !== 0) return optDiff;
+        return (byCat[b].count || 0) - (byCat[a].count || 0);
+      });
+      const monthlyData = labels.map(k => byCat[k].monthlySavingsUsd || 0);
+
+      const subEl = document.getElementById('categoryChartSub');
+      if (subEl) {
+        subEl.textContent = labels.join(' · ');
+      }
+
+      const colorMap = {
+        EC2: '#3b82f6',
+        RDS: '#8b5cf6',
+        ExtendedSupport: '#a855f7',
+        EBS: '#10b981',
+        Idle: '#f59e0b',
+        StorageLifecycle: '#14b8a6',
+        ECS: '#06b6d4',
+        Lambda: '#ec4899',
+        Network: '#eab308'
+      };
+      const barColors = labels.map(k => (monthlyData[labels.indexOf(k)] > 0 ? (colorMap[k] || '#3b82f6') : (dark ? 'rgba(148,163,184,0.2)' : 'rgba(148,163,184,0.35)')));
+
+      const ctxCat = document.getElementById('categorySavingsChart').getContext('2d');
+      if (categoryChartInstance) categoryChartInstance.destroy();
+      categoryChartInstance = new Chart(ctxCat, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: '월간 예상 절감액 ($ USD)',
+            data: monthlyData,
+            backgroundColor: barColors,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: gridColor },
+              ticks: { color: subTickColor, callback: v => '$' + v }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: tickColor, font: { weight: 'bold', size: 10 } }
+            }
+          }
+        }
+      });
+
+      const fDist = dashboardState.findingDistribution || {};
+      const ctxFind = document.getElementById('findingDistChart').getContext('2d');
+      if (findingChartInstance) findingChartInstance.destroy();
+      findingChartInstance = new Chart(ctxFind, {
+        type: 'doughnut',
+        data: {
+          labels: [
+            '🧊 Overprovisioned (과다사양)',
+            '⚠️ NotOptimized (최적화필요)',
+            '⏳ Extended Support (버전업데이트)',
+            '🧹 Idle/Unattached (유휴)',
+            '🔥 Underprovisioned (성능위험)',
+            '✅ Optimized (적정)'
+          ],
+          datasets: [{
+            data: [
+              fDist.Overprovisioned || 0,
+              fDist.NotOptimized || 0,
+              fDist.ExtendedSupport || 0,
+              fDist.Idle || 0,
+              fDist.Underprovisioned || 0,
+              fDist.Optimized || 0
+            ],
+            backgroundColor: ['#06b6d4', '#eab308', '#a855f7', '#f59e0b', '#ea580c', '#10b981'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: tickColor, font: { size: 11 }, boxWidth: 10 }
+            }
+          }
+        }
+      });
+    }
+
+    function renderRoadmap() {
+      const plan = dashboardState.actionPlan || {};
+      const qw = plan.phase1QuickWins || [];
+      const arch = plan.phase2ArchModernization || [];
+      const risk = plan.phase3PerformanceStabilization || [];
+
+      const qwSum = qw.reduce((acc, cur) => acc + (cur.monthlySavingsUsd || 0), 0);
+      const archSum = arch.reduce((acc, cur) => acc + (cur.monthlySavingsUsd || 0), 0);
+
+      const container = document.getElementById('roadmapList');
+      container.innerHTML = `
+        <div onclick="jumpToSavings()" class="p-3 rounded-lg bg-slate-100/80 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 cursor-pointer transition">
+          <div class="flex items-center justify-between font-bold text-emerald-600 dark:text-emerald-400">
+            <span>1단계: Quick Wins (무중단/저위험 즉시 조치)</span>
+            <span>${fmtUsd(qwSum)} / 월 (${qw.length}건)</span>
+          </div>
+          <p class="text-slate-600 dark:text-slate-400 mt-1">유휴 리소스(Idle) 정리, EBS gp2→gp3 전환, 동일 아키텍처 리사이징</p>
+        </div>
+        <div onclick="jumpToSavings()" class="p-3 rounded-lg bg-slate-100/80 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 cursor-pointer transition">
+          <div class="flex items-center justify-between font-bold text-blue-600 dark:text-blue-400">
+            <span>2단계: Graviton(ARM64) & 모더나이제이션</span>
+            <span>${fmtUsd(archSum)} / 월 (${arch.length}건)</span>
+          </div>
+          <p class="text-slate-600 dark:text-slate-400 mt-1">m7g / r7g / db.r6g 등 Graviton 전환 및 EKS/RDS 최신 버전 업데이트</p>
+        </div>
+        <div onclick="jumpToUnderprovisioned()" title="클릭 시 하단 테이블에서 성능 병목(Underprovisioned) 리소스만 필터링하여 이동합니다"
+          class="p-3 rounded-lg bg-orange-500/10 dark:bg-orange-950/30 border border-orange-500/30 hover:border-orange-500/70 cursor-pointer transition group">
+          <div class="flex items-center justify-between font-bold text-orange-600 dark:text-orange-400">
+            <span>🔥 3단계: 성능 병목 리소스 안정화 (스케일업)</span>
+            <span class="flex items-center gap-1">주의 ${risk.length}건 <span class="text-[10px] group-hover:translate-x-0.5 transition-transform">↓</span></span>
+          </div>
+          <p class="text-slate-600 dark:text-slate-400 mt-1">CPU/Memory 피크 90% 초과 리소스 장애 예방 스펙 상향 (클릭 시 목록 이동)</p>
+        </div>
+      `;
+    }
+
+    function scrollToResourceTable(highlightClass = 'ring-2 ring-orange-500/70') {
+      const sec = document.getElementById('resourceTableSection');
+      if (!sec) return;
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const classes = highlightClass.split(' ');
+      sec.classList.add(...classes);
+      setTimeout(() => sec.classList.remove(...classes), 1800);
+    }
+
+    function jumpToUnderprovisioned() {
+      const ff = document.getElementById('findingFilter');
+      if (ff) ff.value = 'Underprovisioned';
+      const searchEl = document.getElementById('searchInput');
+      if (searchEl) searchEl.value = '';
+      setCategoryFilter('ALL');
+      scrollToResourceTable('ring-2 ring-orange-500/70');
+    }
+
+    function jumpToSavings() {
+      const ff = document.getElementById('findingFilter');
+      if (ff) ff.value = 'SAVINGS';
+      const searchEl = document.getElementById('searchInput');
+      if (searchEl) searchEl.value = '';
+      setCategoryFilter('ALL');
+      scrollToResourceTable('ring-2 ring-emerald-500/70');
+    }
+
+    function setCategoryFilter(cat) {
+      selectedCategory = cat;
+      document.querySelectorAll('#categoryTabs .tab-btn').forEach(btn => {
+        if (btn.getAttribute('data-cat') === cat) {
+          btn.className = 'tab-btn tab-active px-3.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 cursor-pointer transition';
+        } else {
+          btn.className = 'tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition';
+        }
+      });
+      renderTable();
+    }
+
+    function getFindingBadge(finding, category) {
+      const fNorm = String(finding || '').trim().toUpperCase().replace(/[_-]/g, '');
+      if (fNorm === 'UNDERPROVISIONED') {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/40">🔥 Underprovisioned</span>`;
+      }
+      if (fNorm === 'OVERPROVISIONED') {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40">🧊 Overprovisioned</span>`;
+      }
+      if (fNorm === 'NOTOPTIMIZED') {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border border-yellow-500/40">⚠️ NotOptimized</span>`;
+      }
+      if (fNorm === 'EXTENDEDSUPPORT') {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40">⏳ Extended Support</span>`;
+      }
+      if (category === 'Idle' || fNorm === 'IDLE' || fNorm === 'UNATTACHED') {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">🧹 ${finding} (유휴)</span>`;
+      }
+      if (fNorm === 'OPTIMIZED') {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40">✅ Optimized (적정)</span>`;
+      }
+      return `<span class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-extrabold bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40">🧊 ${finding}</span>`;
+    }
+
+    function renderTable() {
+      if (!dashboardState) return;
+      const items = dashboardState.items || [];
+      const findingFilter = document.getElementById('findingFilter').value;
+      const q = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+
+      const filtered = items.filter(item => {
+        const fNorm = String(item.finding || '').trim().toUpperCase().replace(/[_-]/g, '');
+        if (selectedCategory !== 'ALL' && item.category !== selectedCategory) return false;
+        if (findingFilter === 'SAVINGS' && (item.monthlySavingsUsd || 0) <= 0) return false;
+        if (findingFilter === 'ExtendedSupport' && fNorm !== 'EXTENDEDSUPPORT') return false;
+        if (findingFilter === 'Overprovisioned' && fNorm !== 'OVERPROVISIONED') return false;
+        if (findingFilter === 'NotOptimized' && fNorm !== 'NOTOPTIMIZED') return false;
+        if (findingFilter === 'Idle' && item.category !== 'Idle' && !['IDLE', 'UNATTACHED'].includes(fNorm)) return false;
+        if (findingFilter === 'Underprovisioned' && fNorm !== 'UNDERPROVISIONED') return false;
+
+        if (q) {
+          const hay = `${item.name} ${item.id} ${item.category} ${item.environment} ${item.owner} ${item.currentConfig} ${item.recommendedConfig}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      const tbody = document.getElementById('resourceTableBody');
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-slate-500">조건에 해당하는 리소스 권고사항이 없습니다.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(item => {
+        const monthly = item.monthlySavingsUsd || 0;
+        const annual = item.annualSavingsUsd || 0;
+        const fNorm = String(item.finding || '').trim().toUpperCase().replace(/[_-]/g, '');
+        const isOptimizedOrSame = fNorm === 'OPTIMIZED' || (item.currentConfig === item.recommendedConfig && monthly <= 0 && fNorm !== 'UNDERPROVISIONED');
+        return `
+          <tr class="hover:bg-slate-100/70 dark:hover:bg-slate-800/40 transition">
+            <td class="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-200">
+              <span class="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[11px]">${item.category}</span>
+            </td>
+            <td class="py-3.5 px-4">
+              <div class="font-bold text-slate-900 dark:text-white">${item.name}</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">${item.id}</div>
+              <div class="flex flex-wrap gap-1 mt-1">
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Env: ${item.environment}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Owner: ${item.owner}</span>
+              </div>
+            </td>
+            <td class="py-3.5 px-4 whitespace-nowrap">
+              ${getFindingBadge(item.finding, item.category)}
+            </td>
+            <td class="py-3.5 px-4">
+              <div class="text-slate-500 dark:text-slate-400 text-[11px]">현재: <span class="text-slate-800 dark:text-slate-200 font-mono font-semibold">${item.currentConfig}</span></div>
+              ${isOptimizedOrSame ? `
+                <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 whitespace-nowrap">적정 유지</span>
+                  <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-400">스펙 변경 불필요 (현재 구성 최적)</span>
+                </div>
+              ` : `
+                <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/40 whitespace-nowrap">권고</span>
+                  <span class="font-mono font-extrabold text-orange-600 dark:text-orange-400">${item.recommendedConfig}</span>
+                  ${item.isGravitonRecommendation ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 whitespace-nowrap">⚠️ ARM64 호환성 확인</span>` : ''}
+                </div>
+                ${item.alternativeConfig ? `<div class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">x86 대안(Rank 2): <span class="font-mono font-semibold text-slate-700 dark:text-slate-300">${item.alternativeConfig}</span></div>` : ''}
+              `}
+            </td>
+            <td class="py-3.5 px-4">
+              <div class="text-slate-800 dark:text-slate-200 font-medium">${item.utilizationSummary}</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">${item.projectedSummary || ''}</div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${
+                item.migrationEffort === 'VeryLow' || item.migrationEffort === 'Low'
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+              }">${item.migrationEffort}</span>
+            </td>
+            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+              ${monthly > 0 ? `
+                <div class="flex items-center justify-end gap-1.5">
+                  <span class="text-sm font-extrabold text-orange-600 dark:text-orange-400">${fmtUsd(monthly)}<span class="text-[11px] font-medium text-slate-500 dark:text-slate-400">/월</span></span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/40">-${item.savingsPercentage}%</span>
+                </div>
+                <div class="text-[11px] text-slate-600 dark:text-slate-300 font-semibold mt-1">${fmtKrw(monthly)}/월 · 연 ${fmtKrw(annual)}</div>
+              ` : (item.serviceTag === 'IdleNATGW' && fNorm === 'NOTOPTIMIZED') ? `
+                <div class="text-xs font-bold text-amber-600 dark:text-amber-400">$0.059 / GB 절감</div>
+                <div class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">S3 트래픽 비례 과금 우회</div>
+              ` : `<span class="text-slate-400">-</span>`}
+            </td>
+            <td class="py-3.5 px-4 text-slate-700 dark:text-slate-300 max-w-xs leading-relaxed">
+              <div>${item.actionGuidance}</div>
+              ${item.compatibilityWarning ? `
+                <div class="mt-1.5 p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-300 font-medium leading-snug">
+                  ${item.compatibilityWarning}
+                </div>
+              ` : ''}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function toggleEc2Graviton(allowed) {
+      const res = await fetch('/api/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allow_ec2_graviton: allowed })
+      });
+      if (res.ok) {
+        dashboardState = await res.json();
+        renderAll();
+      }
+    }
+
+    async function toggleExcludeOptimized(excluded) {
+      const res = await fetch('/api/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exclude_optimized: excluded })
+      });
+      if (res.ok) {
+        dashboardState = await res.json();
+        renderAll();
+      }
+    }
+
+    function downloadReport(type) {
+      const rate = getKrwRate();
+      const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
+      const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
+      const src = encodeURIComponent(currentFxSource || 'AWS Invoice / 기준환율');
+      const url = type === 'excel'
+        ? `/api/reports/excel?krw_rate=${rate}&allow_ec2_graviton=${grav}&exclude_optimized=${excl}&krw_rate_source=${src}`
+        : `/api/reports/word?krw_rate=${rate}&allow_ec2_graviton=${grav}&exclude_optimized=${excl}&krw_rate_source=${src}`;
+      window.location.href = url;
+    }
+
+    function openHtmlReport() {
+      const rate = getKrwRate();
+      const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
+      const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
+      const src = encodeURIComponent(currentFxSource || 'AWS Invoice / 기준환율');
+      window.open(`/api/reports/html?krw_rate=${rate}&allow_ec2_graviton=${grav}&exclude_optimized=${excl}&krw_rate_source=${src}`, '_blank');
+    }
+
+    async function openCloudShellModal() {
+      document.getElementById('cloudShellModal').classList.remove('hidden');
+      await loadCloudShellScript();
+    }
+
+    function closeCloudShellModal() {
+      document.getElementById('cloudShellModal').classList.add('hidden');
+    }
+
+    async function loadCloudShellScript() {
+      const res = await fetch('/api/cloudshell-script?region=auto');
+      const data = await res.json();
+      document.getElementById('cloudShellCodeBox').textContent = data.script;
+    }
+
+    function copyCloudShellScript() {
+      const txt = document.getElementById('cloudShellCodeBox').textContent;
+      navigator.clipboard.writeText(txt);
+      const btn = document.getElementById('copyCsBtn');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span>✅ 클립보드에 복사 완료!</span>';
+        btn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          btn.classList.replace('bg-emerald-600', 'bg-indigo-600');
+        }, 2000);
+      }
+    }
+
+    function onSnapshotFileChange(input) {
+      const nameEl = document.getElementById('selectedSnapshotFileName');
+      if (!nameEl) return;
+      if (input.files && input.files.length > 0) {
+        const f = input.files[0];
+        const kb = (f.size / 1024).toFixed(1);
+        nameEl.textContent = `✅ ${f.name} (${kb} KB)`;
+        nameEl.className = 'text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate';
+      } else {
+        nameEl.textContent = '선택된 파일 없음 (.json)';
+        nameEl.className = 'text-xs font-medium text-slate-500 dark:text-slate-400 truncate';
+      }
+    }
+
+    async function uploadSnapshotFile() {
+      const input = document.getElementById('snapshotFileInput');
+      if (!input.files || input.files.length === 0) {
+        alert('업로드할 CloudShell JSON 파일을 먼저 선택해주세요.');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', input.files[0]);
+
+      const res = await fetch('/api/upload-snapshot', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || '파일 업로드 실패');
+        return;
+      }
+      dashboardState = await res.json();
+      applyExchangeRateFromState();
+      renderAll();
+      closeCloudShellModal();
+    }
+
+    function toggleLiveInputs() {
+      const mode = document.getElementById('liveModeSelect').value;
+      if (mode === 'sts') {
+        document.getElementById('stsInputGroup').classList.remove('hidden');
+        document.getElementById('profileInputGroup').classList.add('hidden');
+      } else {
+        document.getElementById('stsInputGroup').classList.add('hidden');
+        document.getElementById('profileInputGroup').classList.remove('hidden');
+      }
+    }
+
+    async function runLiveAwsScan() {
+      const statusEl = document.getElementById('scanStatusMsg');
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = '⏳ AWS Compute Optimizer Read-Only API 호출 중...';
+
+      const payload = {
+        region: document.getElementById('liveRegionSelect').value,
+        mode: document.getElementById('liveModeSelect').value,
+        aws_access_key_id: document.getElementById('stsAccessKey').value,
+        aws_secret_access_key: document.getElementById('stsSecretKey').value,
+        aws_session_token: document.getElementById('stsSessionToken').value,
+        profile_name: document.getElementById('awsProfileName').value
+      };
+
+      const res = await fetch('/api/scan-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        statusEl.textContent = '❌ ' + (err.detail || '조회 실패');
+        return;
+      }
+
+      dashboardState = await res.json();
+      applyExchangeRateFromState();
+      statusEl.classList.add('hidden');
+      renderAll();
+      closeCloudShellModal();
+    }
+
+    async function resetDemoData() {
+      const res = await fetch('/api/reset-demo', { method: 'POST' });
+      dashboardState = await res.json();
+      applyExchangeRateFromState();
+      renderAll();
+      closeCloudShellModal();
+    }
+
+    window.addEventListener('DOMContentLoaded', fetchDashboard);
+  </script>
+</body>
+</html>

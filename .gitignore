@@ -1,0 +1,32 @@
+# Python Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Sensitive AWS Customer Snapshots & Local Caches (보안 및 계정 정보 보호)
+backend/.last_snapshot.json
+*.snapshot.json
+*.json.bak
+*.bak
+
+# Environment & Credentials
+.env
+.env.*
+*.pem
+*.key
+*.secret
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
