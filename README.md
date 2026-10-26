@@ -3,6 +3,10 @@
 > **AWS 6대 리소스 머신러닝 라이트사이징 & 심층 FinOps 감사(Extended Support · 네트워크 · 스토리지) 통합 분석 스튜디오**  
 > 100% Read-Only(`get-*`, `describe-*`) 기반으로 안전하게 진단하며, CloudShell 원클릭 스크립트와 Excel / Word / HTML 보고서 발행을 지원합니다.
 
+🌐 **라이브 웹 대시보드 (서버 설치 없이 바로 실행)**:  
+👉 **[https://unihit.github.io/aws-compute-optimizer-studio/](https://unihit.github.io/aws-compute-optimizer-studio/)**  
+*(파이썬이나 로컬 서버 구동 없이, 브라우저에서 바로 열고 CloudShell JSON을 드래그&드롭하면 즉시 진단됩니다. 100% 브라우저 메모리 안에서만 동작하므로 AWS 자산 데이터가 외부에 유출되지 않습니다.)*
+
 ---
 
 ## 🌟 주요 핵심 기능

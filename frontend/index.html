@@ -11,6 +11,7 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="./engine.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
   <style>
     :root {
@@ -630,6 +631,7 @@
     }
 
     let currentFxSource = 'AWS Invoice (직전 마감 청구서 확정 환율)';
+    let currentRawPayload = null;
 
     function getKrwRate() {
       const val = parseFloat(document.getElementById('krwRateInput').value);
@@ -673,10 +675,29 @@
 
     async function fetchDashboard() {
       initTheme();
-      const res = await fetch('/api/dashboard');
-      dashboardState = await res.json();
-      applyExchangeRateFromState();
-      renderAll();
+      if (window.STUDIO_DEMO_RAW) {
+        currentRawPayload = window.STUDIO_DEMO_RAW;
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 800);
+        const res = await fetch('/api/dashboard', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          dashboardState = await res.json();
+          applyExchangeRateFromState();
+          renderAll();
+          return;
+        }
+      } catch (e) {
+        // Fallback to client-side mode
+      }
+
+      if (window.STUDIO_DEMO_STATE) {
+        dashboardState = JSON.parse(JSON.stringify(window.STUDIO_DEMO_STATE));
+        applyExchangeRateFromState();
+        renderAll();
+      }
     }
 
     function renderAll() {
@@ -1079,30 +1100,50 @@
     }
 
     async function toggleEc2Graviton(allowed) {
-      const res = await fetch('/api/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ allow_ec2_graviton: allowed })
-      });
-      if (res.ok) {
-        dashboardState = await res.json();
+      const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
+      if (window.normalizeDataset && currentRawPayload) {
+        dashboardState = window.normalizeDataset(currentRawPayload, allowed, excl);
         renderAll();
+        return;
       }
+      try {
+        const res = await fetch('/api/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ allow_ec2_graviton: allowed })
+        });
+        if (res.ok) {
+          dashboardState = await res.json();
+          renderAll();
+        }
+      } catch (e) {}
     }
 
     async function toggleExcludeOptimized(excluded) {
-      const res = await fetch('/api/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exclude_optimized: excluded })
-      });
-      if (res.ok) {
-        dashboardState = await res.json();
+      const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
+      if (window.normalizeDataset && currentRawPayload) {
+        dashboardState = window.normalizeDataset(currentRawPayload, grav, excluded);
         renderAll();
+        return;
       }
+      try {
+        const res = await fetch('/api/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exclude_optimized: excluded })
+        });
+        if (res.ok) {
+          dashboardState = await res.json();
+          renderAll();
+        }
+      } catch (e) {}
     }
 
     function downloadReport(type) {
+      if (type === 'excel' && window.exportReportCsv) {
+        window.exportReportCsv(dashboardState);
+        return;
+      }
       const rate = getKrwRate();
       const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
       const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
@@ -1131,9 +1172,15 @@
     }
 
     async function loadCloudShellScript() {
-      const res = await fetch('/api/cloudshell-script?region=auto');
-      const data = await res.json();
-      document.getElementById('cloudShellCodeBox').textContent = data.script;
+      if (window.CLOUDSHELL_SCRIPT) {
+        document.getElementById('cloudShellCodeBox').textContent = window.CLOUDSHELL_SCRIPT;
+        return;
+      }
+      try {
+        const res = await fetch('/api/cloudshell-script?region=auto');
+        const data = await res.json();
+        document.getElementById('cloudShellCodeBox').textContent = data.script;
+      } catch (e) {}
     }
 
     function copyCloudShellScript() {
@@ -1165,25 +1212,36 @@
       }
     }
 
+    function handleSnapshotFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const rawJson = JSON.parse(e.target.result);
+          currentRawPayload = rawJson;
+          const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
+          const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
+          dashboardState = window.normalizeDataset(rawJson, grav, excl);
+          if (dashboardState.metadata) {
+            dashboardState.metadata.sourceMode = 'cloudshell_snapshot';
+          }
+          applyExchangeRateFromState();
+          renderAll();
+          closeCloudShellModal();
+        } catch (err) {
+          alert('JSON 스냅샷 파싱 실패: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
     async function uploadSnapshotFile() {
       const input = document.getElementById('snapshotFileInput');
       if (!input.files || input.files.length === 0) {
         alert('업로드할 CloudShell JSON 파일을 먼저 선택해주세요.');
         return;
       }
-      const formData = new FormData();
-      formData.append('file', input.files[0]);
-
-      const res = await fetch('/api/upload-snapshot', { method: 'POST', body: formData });
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.detail || '파일 업로드 실패');
-        return;
-      }
-      dashboardState = await res.json();
-      applyExchangeRateFromState();
-      renderAll();
-      closeCloudShellModal();
+      const file = input.files[0];
+      handleSnapshotFile(file);
     }
 
     function toggleLiveInputs() {
@@ -1211,32 +1269,48 @@
         profile_name: document.getElementById('awsProfileName').value
       };
 
-      const res = await fetch('/api/scan-live', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      try {
+        const res = await fetch('/api/scan-live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
 
-      if (!res.ok) {
-        const err = await res.json();
-        statusEl.textContent = '❌ ' + (err.detail || '조회 실패');
-        return;
+        if (!res.ok) {
+          const err = await res.json();
+          statusEl.textContent = '❌ ' + (err.detail || '조회 실패');
+          return;
+        }
+
+        dashboardState = await res.json();
+        applyExchangeRateFromState();
+        statusEl.classList.add('hidden');
+        renderAll();
+        closeCloudShellModal();
+      } catch (err) {
+        statusEl.textContent = '❌ 라이브 API 연결은 로컬 백엔드 서버 구동 시 지원됩니다. CloudShell JSON 업로드를 이용해 주세요.';
       }
-
-      dashboardState = await res.json();
-      applyExchangeRateFromState();
-      statusEl.classList.add('hidden');
-      renderAll();
-      closeCloudShellModal();
     }
 
     async function resetDemoData() {
-      const res = await fetch('/api/reset-demo', { method: 'POST' });
-      dashboardState = await res.json();
+      currentRawPayload = window.STUDIO_DEMO_RAW;
+      dashboardState = JSON.parse(JSON.stringify(window.STUDIO_DEMO_STATE));
       applyExchangeRateFromState();
       renderAll();
       closeCloudShellModal();
     }
+
+    // Global drag & drop support: drag a .json file anywhere onto the page to inspect!
+    window.addEventListener('dragover', (e) => { e.preventDefault(); });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.name.endsWith('.json')) {
+          handleSnapshotFile(file);
+        }
+      }
+    });
 
     window.addEventListener('DOMContentLoaded', fetchDashboard);
   </script>
