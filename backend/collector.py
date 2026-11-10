@@ -16,16 +16,21 @@ Supports:
 4. Local AWS Profile / Environment Variables
 """
 
+from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import urllib.request
 from typing import Dict, Any, List, Optional
-import boto3
-from botocore.config import Config
+try:
+    import boto3
+    from botocore.config import Config
+except ImportError:
+    boto3 = None  # type: ignore
+    Config = Any  # type: ignore
 from backend.mock_data import get_sample_dataset
 
 
-def fetch_aws_invoice_krw_rate(session: boto3.Session, account_id: str, cfg: Config) -> Dict[str, Any]:
+def fetch_aws_invoice_krw_rate(session: Any, account_id: str, cfg: Any) -> Dict[str, Any]:
     """
     Queries AWS Invoicing API (`invoicing:ListInvoiceSummaries` in `us-east-1`) for the most recent
     closed billing periods to extract `CurrencyExchangeDetails.Rate` (`USD -> KRW`) applied on the official AWS Invoice.
@@ -344,6 +349,113 @@ def _is_graviton_instance(instance_type: str, platform_diffs: List[str]) -> bool
     return family.endswith("g") or family.endswith("gd") or family.endswith("gn")
 
 
+def _extract_region_from_arn(arn: str, fallback: str) -> str:
+    if arn and arn.startswith("arn:aws:"):
+        parts = arn.split(":")
+        if len(parts) > 3 and parts[3]:
+            return parts[3]
+    return fallback
+
+
+def merge_raw_snapshots(base_raw: Dict[str, Any], new_raw: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merges two raw snapshot payloads (from different accounts or regions) into a combined payload.
+    """
+    if not base_raw:
+        return new_raw
+    if not new_raw:
+        return base_raw
+
+    b_meta = base_raw.get("metadata", {})
+    n_meta = new_raw.get("metadata", {})
+    b_acc = str(b_meta.get("accountId", "Unknown"))
+    n_acc = str(n_meta.get("accountId", "Unknown"))
+    b_reg = str(b_meta.get("region", "ap-northeast-2"))
+    n_reg = str(n_meta.get("region", "ap-northeast-2"))
+
+    merged_acc = b_acc if b_acc == n_acc else f"{b_acc}, {n_acc}"
+    merged_reg = b_reg if b_reg == n_reg else f"{b_reg}, {n_reg}"
+
+    def _tag_source(lst: List[Dict[str, Any]], acc: str, reg: str) -> List[Dict[str, Any]]:
+        out = []
+        for item in (lst or []):
+            cp = dict(item)
+            cp.setdefault("accountId", acc)
+            cp.setdefault("region", reg)
+            out.append(cp)
+        return out
+
+    b_net = base_raw.get("networkAudit", {})
+    n_net = new_raw.get("networkAudit", {})
+    b_ns = b_net.get("summary", {})
+    n_ns = n_net.get("summary", {})
+
+    b_stg = base_raw.get("storageLifecycleAudit", {})
+    n_stg = new_raw.get("storageLifecycleAudit", {})
+    b_ss = b_stg.get("summary", {})
+    n_ss = n_stg.get("summary", {})
+
+    b_ce = float((base_raw.get("costExplorer") or {}).get("lastMonthTotalUsd") or 0.0)
+    n_ce = float((new_raw.get("costExplorer") or {}).get("lastMonthTotalUsd") or 0.0)
+
+    return {
+        "metadata": {
+            "accountId": merged_acc,
+            "accountAlias": f"Multi-Env ({merged_acc})",
+            "region": merged_reg,
+            "collectedAt": n_meta.get("collectedAt") or b_meta.get("collectedAt"),
+            "sourceMode": "cloudshell_snapshot",
+            "lookBackPeriodInDays": 14,
+            "computeOptimizerStatus": "Active" if (b_meta.get("computeOptimizerStatus") == "Active" or n_meta.get("computeOptimizerStatus") == "Active") else "Inactive",
+            "computeOptimizerNote": "다중 스냅샷(Multi-Account / Multi-Region) 병합 분석 모드",
+        },
+        "exchangeRateInfo": new_raw.get("exchangeRateInfo") or base_raw.get("exchangeRateInfo"),
+        "regionalPricing": base_raw.get("regionalPricing") or new_raw.get("regionalPricing"),
+        "costExplorer": {
+            "lastMonthTotalUsd": round(b_ce + n_ce, 2),
+            "billingPeriod": "다중 계정/리전 합산 청구액",
+        },
+        "ec2": _tag_source(base_raw.get("ec2", base_raw.get("instanceRecommendations", [])), b_acc, b_reg)
+               + _tag_source(new_raw.get("ec2", new_raw.get("instanceRecommendations", [])), n_acc, n_reg),
+        "ebs": _tag_source(base_raw.get("ebs", base_raw.get("volumeRecommendations", [])), b_acc, b_reg)
+               + _tag_source(new_raw.get("ebs", new_raw.get("volumeRecommendations", [])), n_acc, n_reg),
+        "rds": _tag_source(base_raw.get("rds", base_raw.get("rdsDBRecommendations", [])), b_acc, b_reg)
+               + _tag_source(new_raw.get("rds", new_raw.get("rdsDBRecommendations", [])), n_acc, n_reg),
+        "ecs": _tag_source(base_raw.get("ecs", base_raw.get("ecsServiceRecommendations", [])), b_acc, b_reg)
+               + _tag_source(new_raw.get("ecs", new_raw.get("ecsServiceRecommendations", [])), n_acc, n_reg),
+        "lambda": _tag_source(base_raw.get("lambda", base_raw.get("lambdaFunctionRecommendations", [])), b_acc, b_reg)
+                  + _tag_source(new_raw.get("lambda", new_raw.get("lambdaFunctionRecommendations", [])), n_acc, n_reg),
+        "idle": _tag_source(base_raw.get("idle", base_raw.get("idleRecommendations", [])), b_acc, b_reg)
+                + _tag_source(new_raw.get("idle", new_raw.get("idleRecommendations", [])), n_acc, n_reg),
+        "extendedSupport": _tag_source(base_raw.get("extendedSupport", []), b_acc, b_reg)
+                           + _tag_source(new_raw.get("extendedSupport", []), n_acc, n_reg),
+        "networkAudit": {
+            "summary": {
+                "totalEipCount": (b_ns.get("totalEipCount", 0) or 0) + (n_ns.get("totalEipCount", 0) or 0),
+                "unattachedEipCount": (b_ns.get("unattachedEipCount", 0) or 0) + (n_ns.get("unattachedEipCount", 0) or 0),
+                "totalAlbCount": (b_ns.get("totalAlbCount", 0) or 0) + (n_ns.get("totalAlbCount", 0) or 0),
+                "idleOrNoTargetAlbCount": (b_ns.get("idleOrNoTargetAlbCount", 0) or 0) + (n_ns.get("idleOrNoTargetAlbCount", 0) or 0),
+                "totalNatGwCount": (b_ns.get("totalNatGwCount", 0) or 0) + (n_ns.get("totalNatGwCount", 0) or 0),
+                "idleOrRedundantNatGwCount": (b_ns.get("idleOrRedundantNatGwCount", 0) or 0) + (n_ns.get("idleOrRedundantNatGwCount", 0) or 0),
+                "missingS3EndpointVpcCount": (b_ns.get("missingS3EndpointVpcCount", 0) or 0) + (n_ns.get("missingS3EndpointVpcCount", 0) or 0),
+            },
+            "items": _tag_source(b_net.get("items", []), b_acc, b_reg) + _tag_source(n_net.get("items", []), n_acc, n_reg),
+        },
+        "storageLifecycleAudit": {
+            "summary": {
+                "agedEbsSnapshotCount": (b_ss.get("agedEbsSnapshotCount", 0) or 0) + (n_ss.get("agedEbsSnapshotCount", 0) or 0),
+                "agedEbsSnapshotTotalGb": (b_ss.get("agedEbsSnapshotTotalGb", 0) or 0) + (n_ss.get("agedEbsSnapshotTotalGb", 0) or 0),
+                "agedRdsSnapshotCount": (b_ss.get("agedRdsSnapshotCount", 0) or 0) + (n_ss.get("agedRdsSnapshotCount", 0) or 0),
+                "agedRdsSnapshotTotalGb": (b_ss.get("agedRdsSnapshotTotalGb", 0) or 0) + (n_ss.get("agedRdsSnapshotTotalGb", 0) or 0),
+                "neverExpireLogGroupCount": (b_ss.get("neverExpireLogGroupCount", 0) or 0) + (n_ss.get("neverExpireLogGroupCount", 0) or 0),
+                "neverExpireLogTotalGb": (b_ss.get("neverExpireLogTotalGb", 0) or 0) + (n_ss.get("neverExpireLogTotalGb", 0) or 0),
+                "s3NoLifecycleBucketCount": (b_ss.get("s3NoLifecycleBucketCount", 0) or 0) + (n_ss.get("s3NoLifecycleBucketCount", 0) or 0),
+            },
+            "items": _tag_source(b_stg.get("items", []), b_acc, b_reg) + _tag_source(n_stg.get("items", []), n_acc, n_reg),
+        },
+    }
+
+
 def normalize_dataset(
     raw: Dict[str, Any],
     allow_ec2_graviton: bool = True,
@@ -412,11 +524,17 @@ def normalize_dataset(
         proj_cpu = _extract_metric(best_opt.get("projectedUtilizationMetrics", []), "CPU")
         proj_mem = _extract_metric(best_opt.get("projectedUtilizationMetrics", []), "MEMORY")
 
-        compatibility_warning = (
-            "⚠️ Graviton(ARM64) 전환 주의: OS 이미지(AMI), 네이티브 C/C++ 바이너리, Docker 컨테이너 이미지 및 런타임 버전의 ARM64 아키텍처 호환성 사전 검증이 필수입니다."
-            if is_graviton_rec
-            else None
-        )
+        if is_graviton_rec:
+            compatibility_warning = (
+                "⚠️ Graviton(ARM64) 전환 주의: OS 이미지(AMI), 네이티브 C/C++ 바이너리, Docker 컨테이너 이미지 및 런타임 버전의 ARM64 아키텍처 호환성 사전 검증이 필수입니다. "
+                "💡 또한 적용 중인 EC2 Instance RI 또는 Savings Plans 약정 조건(패밀리/리전) 충돌 여부를 사전 확인하세요."
+            )
+        elif finding == "Overprovisioned" and rec_cfg != current_cfg:
+            compatibility_warning = (
+                "💡 RI / Savings Plans 약정 확인: 인스턴스 타입 변경 전 현재 적용 중인 EC2 Instance RI 또는 Savings Plans 약정 만료 일정 및 커버리지 영향을 확인하세요."
+            )
+        else:
+            compatibility_warning = None
 
         alt_opt = filtered_options[1].get("instanceType") if len(filtered_options) > 1 else None
         if alt_opt == rec_cfg or finding == "Optimized":
@@ -429,6 +547,7 @@ def normalize_dataset(
             "category": "EC2",
             "serviceLabel": "Amazon EC2",
             "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn, rec.get("region", region)),
             "environment": _extract_tag(tags, "Environment", "Production"),
             "owner": _extract_tag(tags, "Owner", "-"),
             "serviceTag": _extract_tag(tags, "Service", "-"),
@@ -469,13 +588,19 @@ def normalize_dataset(
         tags = rec.get("tags", [])
         name = _extract_tag(tags, "Name", res_id)
         cur = rec.get("currentConfiguration", {})
-        cur_str = f"{cur.get('volumeType', 'gp2')} ({cur.get('volumeSize', 0)}GB, {cur.get('volumeBaselineIOPS', 0)} IOPS)"
+        cur_type = cur.get("volumeType", "gp2")
+        cur_size = int(cur.get("volumeSize", 0) or 0)
+        cur_iops = int(cur.get("volumeBaselineIOPS", 0) or 0)
+        cur_str = f"{cur_type} ({cur_size}GB, {cur_iops} IOPS)"
 
         options = rec.get("volumeRecommendationOptions", [])
         best_opt = options[0] if options else {}
         opt_cfg = best_opt.get("configuration", {})
+        rec_type = opt_cfg.get("volumeType", "-")
+        rec_size = int(opt_cfg.get("volumeSize", 0) or 0)
+        rec_iops = int(opt_cfg.get("volumeBaselineIOPS", 0) or 0)
         rec_str = (
-            f"{opt_cfg.get('volumeType', '-')} ({opt_cfg.get('volumeSize', 0)}GB, {opt_cfg.get('volumeBaselineIOPS', 0)} IOPS)"
+            f"{rec_type} ({rec_size}GB, {rec_iops} IOPS)"
             if opt_cfg
             else cur_str
         )
@@ -492,6 +617,14 @@ def normalize_dataset(
             monthly_sav = 0.0
             sav_pct = 0.0
 
+        ebs_warning = None
+        if cur_type == "gp2" and rec_type == "gp3" and (cur_size > 1000 or cur_iops > 3000) and rec_iops < cur_iops:
+            ebs_warning = (
+                f"⚠️ 대형 gp2 볼륨 Baseline IOPS 주의: 현재 {cur_size:,}GB gp2 볼륨의 기본 성능({cur_iops:,} IOPS / 250MB/s)이 "
+                f"gp3 기본 제공량({rec_iops:,} IOPS / 125MB/s)보다 높습니다. 피크 부하 시 I/O 병목을 방지하려면 "
+                f"gp3 전환 시 IOPS(최대 {cur_iops:,}) 및 처리량(250MB/s) 프로비저닝 추가 구성을 검토하세요."
+            )
+
         items.append({
             "id": res_id,
             "arn": arn,
@@ -499,6 +632,7 @@ def normalize_dataset(
             "category": "EBS",
             "serviceLabel": "Amazon EBS",
             "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn, rec.get("region", region)),
             "environment": _extract_tag(tags, "Environment", "Production"),
             "owner": _extract_tag(tags, "Owner", "-"),
             "serviceTag": _extract_tag(tags, "Service", "Storage"),
@@ -507,6 +641,8 @@ def normalize_dataset(
             "currentConfig": cur_str,
             "recommendedConfig": rec_str,
             "alternativeConfig": None,
+            "isGravitonRecommendation": False,
+            "compatibilityWarning": ebs_warning,
             "migrationEffort": "VeryLow",
             "performanceRisk": rec.get("currentPerformanceRisk", "VeryLow"),
             "platformDifferences": [],
@@ -517,7 +653,7 @@ def normalize_dataset(
             "monthlySavingsUsd": round(monthly_sav, 2),
             "annualSavingsUsd": round(monthly_sav * 12, 2),
             "savingsPercentage": round(sav_pct, 1),
-            "actionGuidance": "✅ 현재 볼륨 스펙 적정 상태 유지" if finding_ebs == "Optimized" else f"AWS ModifyVolume API로 무중단 {cur.get('volumeType')} → {opt_cfg.get('volumeType', 'gp3')} 볼륨 전환",
+            "actionGuidance": "✅ 현재 볼륨 스펙 적정 상태 유지" if finding_ebs == "Optimized" else f"AWS ModifyVolume API로 무중단 {cur_type} → {opt_cfg.get('volumeType', 'gp3')} 볼륨 전환",
             "tags": _format_tags(tags),
         })
 
@@ -558,6 +694,7 @@ def normalize_dataset(
 
         has_new_engine = "NewEngineVersionAvailable" in reasons
         has_new_gen_cls = "NewGenerationDBInstanceClassAvailable" in reasons and rec_cls != cur_cls
+        is_rds_graviton = ("g." in rec_cls) and ("g." not in cur_cls)
 
         if finding == "Optimized" and monthly_sav <= 0:
             monthly_sav = 0.0
@@ -581,6 +718,12 @@ def normalize_dataset(
             proj_txt = f"Instance ${inst_sav:,.0f} + Storage ${stg_sav:,.0f} 절감"
             guide_txt = f"정기 점검 윈도우에 {cur_cls} → {rec_cls} 클래스 변경 및 스토리지 gp3 전환 권고"
 
+        rds_warning = None
+        if finding != "Optimized" and monthly_sav > 0 and rec_cls != cur_cls:
+            rds_warning = (
+                "💡 RDS Reserved Instance(RI) 약정 확인: DB 인스턴스 클래스 변경 전 기존 RDS RI 약정(Size-Flexible 지원 여부 및 세대/엔진 일치 여부)을 확인하여 약정 낭비를 방지하세요."
+            )
+
         items.append({
             "id": res_id,
             "arn": arn,
@@ -588,6 +731,7 @@ def normalize_dataset(
             "category": "RDS",
             "serviceLabel": "Amazon RDS / Aurora",
             "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn, rec.get("region", region)),
             "environment": _extract_tag(tags, "Environment", "Production"),
             "owner": _extract_tag(tags, "Owner", "-"),
             "serviceTag": _extract_tag(tags, "Service", "Database"),
@@ -596,9 +740,11 @@ def normalize_dataset(
             "currentConfig": cur_str,
             "recommendedConfig": rec_str,
             "alternativeConfig": None,
+            "isGravitonRecommendation": is_rds_graviton,
+            "compatibilityWarning": rds_warning,
             "migrationEffort": "Low",
             "performanceRisk": "Low",
-            "platformDifferences": ["GravitonDB"] if "g." in rec_cls and "g." not in cur_cls else [],
+            "platformDifferences": ["GravitonDB"] if is_rds_graviton else [],
             "utilizationSummary": f"CPU Max {cpu_max or 0}% / FreeableMem {mem_max or 0}%",
             "projectedSummary": proj_txt,
             "cpuMax": cpu_max,
@@ -640,6 +786,7 @@ def normalize_dataset(
             "category": "ECS",
             "serviceLabel": "Amazon ECS (Fargate)",
             "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn, rec.get("region", region)),
             "environment": _extract_tag(tags, "Environment", "Production"),
             "owner": _extract_tag(tags, "Owner", "-"),
             "serviceTag": _extract_tag(tags, "Service", "Container"),
@@ -648,6 +795,8 @@ def normalize_dataset(
             "currentConfig": cur_str,
             "recommendedConfig": rec_str,
             "alternativeConfig": None,
+            "isGravitonRecommendation": False,
+            "compatibilityWarning": None,
             "migrationEffort": "VeryLow",
             "performanceRisk": "VeryLow",
             "platformDifferences": [],
@@ -702,6 +851,7 @@ def normalize_dataset(
             "category": "Lambda",
             "serviceLabel": "AWS Lambda",
             "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn, rec.get("region", region)),
             "environment": _extract_tag(tags, "Environment", "Production"),
             "owner": _extract_tag(tags, "Owner", "-"),
             "serviceTag": _extract_tag(tags, "Service", "Serverless"),
@@ -710,6 +860,8 @@ def normalize_dataset(
             "currentConfig": cur_str,
             "recommendedConfig": rec_str,
             "alternativeConfig": None,
+            "isGravitonRecommendation": False,
+            "compatibilityWarning": None,
             "migrationEffort": "VeryLow",
             "performanceRisk": "VeryLow",
             "platformDifferences": [],
@@ -744,6 +896,7 @@ def normalize_dataset(
             "category": "Idle",
             "serviceLabel": f"Idle ({rtype})",
             "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn, rec.get("region", region)),
             "environment": _extract_tag(tags, "Environment", "Staging"),
             "owner": _extract_tag(tags, "Owner", "-"),
             "serviceTag": _extract_tag(tags, "Service", "Unused"),
@@ -752,6 +905,8 @@ def normalize_dataset(
             "currentConfig": f"{rtype} (Active Billing)",
             "recommendedConfig": "Stop / Snapshot 후 Terminate",
             "alternativeConfig": None,
+            "isGravitonRecommendation": False,
+            "compatibilityWarning": None,
             "migrationEffort": "VeryLow",
             "performanceRisk": "VeryLow",
             "platformDifferences": [],
@@ -804,6 +959,7 @@ def normalize_dataset(
 
     for rec in ext_list:
         res_id = rec.get("resourceId", "")
+        arn_ext = rec.get("resourceArn", res_id)
         name = rec.get("resourceName") or res_id
         stype = rec.get("serviceType", "EKS")
         cur_ver = rec.get("currentVersion", "-")
@@ -814,11 +970,12 @@ def normalize_dataset(
 
         items.append({
             "id": res_id,
-            "arn": rec.get("resourceArn", res_id),
+            "arn": arn_ext,
             "name": name,
             "category": "ExtendedSupport",
             "serviceLabel": f"Extended Support ({stype})",
-            "accountId": account_id,
+            "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(arn_ext, rec.get("region", region)),
             "environment": rec.get("environment", "Production"),
             "owner": rec.get("owner", "-"),
             "serviceTag": stype,
@@ -869,6 +1026,7 @@ def normalize_dataset(
         sub_type = rec.get("subType", "Network")
         finding = _normalize_finding(rec.get("finding", "Unattached"))
         monthly_sav = float(rec.get("monthlySavingsUsd", 0.0))
+        net_warning = None
 
         if sub_type == "UnusedEIP":
             monthly_sav = eip_mo
@@ -881,7 +1039,6 @@ def normalize_dataset(
         elif sub_type == "IdleNATGW":
             if finding in ("Overprovisioned", "NotOptimized"):
                 finding = "NotOptimized"
-            # Always derive NAT Gateway formula from the target region's official rate (e.g., Seoul $0.059 * 730 = $43.07, Mumbai $0.056 * 730 = $40.88, Virginia $0.045 * 730 = $32.85)
             monthly_sav = nat_mo
             util_str = (
                 f"전체 NAT GW {net_summary.get('totalNatGwCount', 0)}개 점검: {reg_label} 기준 단가(${nat_hr}/hr · ${nat_gb}/GB × 730 = ${nat_mo}/월)"
@@ -889,6 +1046,11 @@ def normalize_dataset(
                 else f"14일간 트래픽 0 Byte 유휴 NAT GW: {reg_label} 고정비(${nat_hr}/hr × 730h = ${nat_mo}/월)"
             )
             proj_str = f"{reg_label} 리전 산식 적용 (${nat_gb}/GB · ${nat_hr}/hr × 730 = ${nat_mo}/월)"
+            net_warning = (
+                "⚠️ 교차 가용영역(Cross-AZ) 트래픽 주의: Multi-AZ 운영 환경에서 단일 NAT GW로 통합하면 다른 AZ 서브넷 경유 시 "
+                "Cross-AZ 데이터 전송 요금($0.01/GB)과 단일 장애점(SPOF) 위험이 발생합니다. 단일 NAT 통합은 비운영(Dev/Stg) 환경에만 적용하고, "
+                "운영(Prod) 환경은 무료 S3/DynamoDB Gateway VPC Endpoint 추가만 우선 적용하세요."
+            )
         else:
             util_str = rec.get("utilizationDetail", "-")
             proj_str = "-"
@@ -899,7 +1061,8 @@ def normalize_dataset(
             "name": name,
             "category": "Network",
             "serviceLabel": "EIP / ALB / NAT 점검",
-            "accountId": account_id,
+            "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(res_id, rec.get("region", region)),
             "environment": rec.get("environment", "Production"),
             "owner": rec.get("owner", "-"),
             "serviceTag": sub_type,
@@ -909,7 +1072,7 @@ def normalize_dataset(
             "recommendedConfig": rec.get("recommendedConfig", "무료 S3/DynamoDB Gateway VPC Endpoint 생성 및 비운영 NAT 통합"),
             "alternativeConfig": None,
             "isGravitonRecommendation": False,
-            "compatibilityWarning": None,
+            "compatibilityWarning": net_warning,
             "migrationEffort": "VeryLow" if (sub_type == "UnusedEIP" or finding == "NotOptimized") else "Low",
             "performanceRisk": "VeryLow",
             "platformDifferences": [],
@@ -949,11 +1112,18 @@ def normalize_dataset(
         monthly_sav = float(rec.get("monthlySavingsUsd", 0.0))
         sav_pct = float(rec.get("savingsPercentage", 100.0))
         util_detail = rec.get("utilizationDetail", "-")
+        stg_warning = None
 
-        if sub_type == "AgedEBSSnapshot" and stg_summary.get("agedEbsSnapshotTotalGb", 0) > 0:
-            tot_gb = stg_summary["agedEbsSnapshotTotalGb"]
-            monthly_sav = round(tot_gb * ebs_snap_rate, 2)
-            util_detail = f"90일+ 장기 방치 스냅샷 ({tot_gb} GB × {reg_label} 단가 ${ebs_snap_rate}/GB-월 = ${monthly_sav:,.2f}/월)"
+        if sub_type == "AgedEBSSnapshot":
+            if stg_summary.get("agedEbsSnapshotTotalGb", 0) > 0:
+                tot_gb = stg_summary["agedEbsSnapshotTotalGb"]
+                monthly_sav = round(tot_gb * ebs_snap_rate, 2)
+                util_detail = f"90일+ 장기 방치 스냅샷 ({tot_gb} GB × {reg_label} 단가 ${ebs_snap_rate}/GB-월 = ${monthly_sav:,.2f}/월)"
+            archive_rate = round(ebs_snap_rate * 0.25, 4)
+            stg_warning = (
+                f"💡 규정 준수(Compliance) 장기 보관 대안: 감사/법적 의무로 스냅샷 삭제가 불가한 경우, "
+                f"'EBS Snapshot Archive' 티어로 이동하면 스토리지 비용을 최대 75% 절감(${ebs_snap_rate} → ${archive_rate}/GB-월, 최소 90일 보관 조건)할 수 있습니다."
+            )
         elif sub_type == "CloudWatchLogsNoRetention" and stg_summary.get("neverExpireLogTotalGb", 0) > 0:
             tot_log_gb = stg_summary["neverExpireLogTotalGb"]
             monthly_sav = round(max(tot_log_gb * cw_log_rate, 5.0), 2)
@@ -965,7 +1135,8 @@ def normalize_dataset(
             "name": name,
             "category": "StorageLifecycle",
             "serviceLabel": "스냅샷 / 로그 / S3 수명주기",
-            "accountId": account_id,
+            "accountId": rec.get("accountId", account_id),
+            "region": _extract_region_from_arn(res_id, rec.get("region", region)),
             "environment": rec.get("environment", "Production"),
             "owner": rec.get("owner", "-"),
             "serviceTag": sub_type,
@@ -975,7 +1146,7 @@ def normalize_dataset(
             "recommendedConfig": rec.get("recommendedConfig", "수명주기(Lifecycle) 정책 적용"),
             "alternativeConfig": None,
             "isGravitonRecommendation": False,
-            "compatibilityWarning": None,
+            "compatibilityWarning": stg_warning,
             "migrationEffort": "VeryLow",
             "performanceRisk": "VeryLow",
             "platformDifferences": [],
@@ -1499,6 +1670,7 @@ account_id = sts.get_caller_identity().get("Account", "Unknown")
 now_utc = datetime.datetime.now(datetime.timezone.utc)
 
 # 0. Compute Optimizer 가입 여부(Enrollment Status) 확인 및 페이지네이션 수집
+print("⏳ [1/6] AWS Compute Optimizer 가입 상태 및 라이트사이징 권고 수집 중...", flush=True)
 co = session.client("compute-optimizer", region_name=region, config=cfg)
 co_status = "Active"
 co_note = "Compute Optimizer 정상 활성화됨 (최근 14일 메트릭 분석)"
@@ -1531,6 +1703,7 @@ def paginate_co(method_name, key):
     return items
 
 # 1. Extended Support & Version Upgrade (EKS describe_cluster_versions & RDS describe_db_engine_versions 실시간 동기화)
+print("⏳ [2/6] EKS & RDS Extended Support 버전 및 표준 지원 종료 여부 점검 중...", flush=True)
 ext_items = []
 try:
     eks = session.client("eks", region_name=region, config=cfg)
@@ -1637,6 +1810,7 @@ except Exception:
     pass
 
 # 2. Regional Pricing Lookup (리전별 공식 단가 테이블 + AWS Price List API 실시간 동기화) & Network Audit
+print(f"⏳ [3/6] 리전({{region}}) 단가 동기화 및 네트워크(EIP / ALB / NAT GW / VPC Endpoint) 감사 중...", flush=True)
 reg_price_table = {{
     "ap-northeast-2": {{"label": "ap-northeast-2 (서울)", "nat_hr": 0.059, "nat_gb": 0.059, "alb_hr": 0.0243, "ebs_snap": 0.05, "cw_log": 0.03}},
     "ap-south-1": {{"label": "ap-south-1 (뭄바이)", "nat_hr": 0.056, "nat_gb": 0.056, "alb_hr": 0.0243, "ebs_snap": 0.05, "cw_log": 0.03}},
@@ -1781,6 +1955,7 @@ except Exception:
     pass
 
 # 3. Storage & Log Lifecycle Audit (90d+ EBS/RDS Snapshots, Never-Expire CloudWatch Logs, S3 No Lifecycle)
+print("⏳ [4/6] 노후 EBS 스냅샷(90일+) 및 CloudWatch Logs 보관 주기 점검 중...", flush=True)
 stg_items = []
 aged_ebs_cnt, aged_ebs_gb = 0, 0
 try:
@@ -1826,6 +2001,7 @@ except Exception:
     pass
 
 # 4. Cost Explorer (최근 30일 총 청구액 조회)
+print("⏳ [5/6] Cost Explorer 최근 30일 청구액 및 AWS Invoicing 환율 조회 중...", flush=True)
 ce_summary = {{"lastMonthTotalUsd": 0.0, "billingPeriod": "최근 30일 청구 기준"}}
 try:
     ce = session.client("ce", region_name="us-east-1", config=cfg)
@@ -1867,6 +2043,7 @@ try:
 except Exception:
     pass
 
+print("⏳ [6/6] Compute Optimizer 리소스별 상세 추천 페이지네이션 수집 및 JSON 패키징 중...", flush=True)
 snapshot = {{
     "metadata": {{
         "accountId": account_id,
@@ -1913,10 +2090,17 @@ snapshot = {{
 }}
 
 filename = f"compute_optimizer_snapshot_{{account_id}}_{{region}}.json"
-with open(filename, "w", encoding="utf-8") as f:
-    json.dump(snapshot, f, ensure_ascii=False, indent=2, default=str)
+fixed_filename = "aws_optimizer_snapshot.json"
+for fn in (filename, fixed_filename):
+    with open(fn, "w", encoding="utf-8") as f:
+        json.dump(snapshot, f, ensure_ascii=False, indent=2, default=str)
 
-print(f"✅ 통합 수집 완료! (리전: {{region}}, Compute Optimizer 상태: {{co_status}})")
-print(f"👉 CloudShell 우측 상단 [Actions] -> [Download file]에서 '{{filename}}'을 다운로드한 뒤 브라우저에 업로드하세요.")
+print("=" * 76)
+print(f"✅ 통합 수집 완료! (계정: {{account_id}}, 리전: {{region}}, CO 상태: {{co_status}})")
+print(f"📁 생성된 파일 (1 - 고정 파일명): {{fixed_filename}}")
+print(f"📁 생성된 파일 (2 - 계정/리전별): {{filename}}")
+print("👉 CloudShell 우측 상단 [Actions] -> [Download file] 클릭 후 아래 경로를 붙여넣으세요:")
+print(f"   aws_optimizer_snapshot.json")
+print("=" * 76)
 EOF
 """

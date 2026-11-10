@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from backend.mock_data import get_sample_dataset
 from backend.collector import (
     normalize_dataset,
+    merge_raw_snapshots,
     collect_from_aws_live,
     generate_cloudshell_script,
 )
@@ -124,13 +125,16 @@ def get_cloudshell_command(region: str = Query("auto")):
 
 
 @app.post("/api/upload-snapshot")
-async def upload_cloudshell_snapshot(file: UploadFile = File(...)):
-    """Imports a JSON snapshot exported from AWS CloudShell or AWS CLI."""
+async def upload_cloudshell_snapshot(file: UploadFile = File(...), merge: bool = Query(False)):
+    """Imports a JSON snapshot exported from AWS CloudShell or AWS CLI (supports merging multiple accounts/regions)."""
     global CURRENT_RAW_PAYLOAD, CURRENT_STATE
     try:
         raw_bytes = await file.read()
         payload = json.loads(raw_bytes.decode("utf-8"))
-        CURRENT_RAW_PAYLOAD = payload
+        if merge and CURRENT_RAW_PAYLOAD and CURRENT_RAW_PAYLOAD.get("metadata", {}).get("sourceMode") != "demo":
+            CURRENT_RAW_PAYLOAD = merge_raw_snapshots(CURRENT_RAW_PAYLOAD, payload)
+        else:
+            CURRENT_RAW_PAYLOAD = payload
         _save_payload_cache(CURRENT_RAW_PAYLOAD)
         CURRENT_STATE = normalize_dataset(
             CURRENT_RAW_PAYLOAD,
@@ -241,3 +245,11 @@ def view_html_report(
 def serve_index():
     index_file = FRONTEND_DIR / "index.html"
     return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+
+
+@app.get("/engine.js")
+def serve_engine_js():
+    engine_file = FRONTEND_DIR / "engine.js"
+    if not engine_file.exists():
+        engine_file = FRONTEND_DIR.parent / "engine.js"
+    return Response(content=engine_file.read_text(encoding="utf-8"), media_type="application/javascript")

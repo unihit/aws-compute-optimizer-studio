@@ -58,6 +58,20 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
+  <!-- Full-Screen Drag & Drop Overlay -->
+  <div id="dropzoneOverlay" class="fixed inset-0 z-[60] hidden bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-8 pointer-events-none transition-opacity">
+    <div class="border-4 border-dashed border-emerald-400 rounded-3xl p-12 max-w-2xl w-full text-center space-y-4 bg-slate-900/90 shadow-2xl">
+      <div class="text-6xl">📂</div>
+      <h2 class="text-2xl font-extrabold text-white">AWS CloudShell 스냅샷 JSON 파일을 여기에 놓으세요</h2>
+      <p class="text-sm text-emerald-300 font-medium">
+        단일 파일 또는 여러 계정·리전의 스냅샷 파일(.json) 여러 개를 동시에 드롭하면 자동으로 병합 분석됩니다.
+      </p>
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-xs font-bold text-emerald-200">
+        🔒 100% 브라우저 로컬 메모리 분석 (외부 서버 전송 없음 · 새로고침 시 세션 유지)
+      </div>
+    </div>
+  </div>
+
   <!-- Top Navigation Header -->
   <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur px-6 py-3.5 transition-colors">
     <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
@@ -66,11 +80,16 @@
           CO
         </div>
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">AWS Compute Optimizer FinOps Studio</h1>
             <span id="sourceBadge" class="px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
               DEMO DATASET
             </span>
+            <button id="clearSessionBtn" onclick="resetDemoData()"
+              title="업로드된 스냅샷 세션을 지우고 기본 데모 데이터로 복원합니다"
+              class="hidden px-2 py-0.5 text-[11px] font-bold rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30 cursor-pointer transition">
+              🔄 데모 초기화
+            </button>
           </div>
           <p id="accountSubtext" class="text-xs text-slate-500 dark:text-slate-400">
             Account: 123456789012 | Region: ap-northeast-2 | Read-Only 안전 진단 모드
@@ -341,8 +360,8 @@
           </button>
         </div>
 
-        <!-- Search, EC2 Graviton Toggle, Exclude Optimized Toggle & Finding Filter -->
-        <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Search, EC2 Graviton Toggle, Exclude Optimized Toggle & Multi-Dimensional Filters -->
+        <div class="flex flex-wrap items-center gap-2">
           <!-- EC2 Graviton Toggle -->
           <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs select-none"
             title="체크 해제 시 EC2 권고에서 Graviton(ARM64) 전환을 제외하고 동일 아키텍처(x86) 리사이징 옵션만 제안합니다.">
@@ -359,8 +378,23 @@
             <span class="font-semibold text-slate-700 dark:text-slate-200">✅ 적정(Optimized) 리소스 제외</span>
           </label>
 
-          <select id="findingFilter" onchange="renderTable()"
-            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
+          <select id="accountFilter" onchange="onFilterChange()"
+            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
+            <option value="ALL">모든 계정/리전 (Account)</option>
+          </select>
+
+          <select id="envFilter" onchange="onFilterChange()"
+            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
+            <option value="ALL">모든 환경 (Env)</option>
+          </select>
+
+          <select id="ownerFilter" onchange="onFilterChange()"
+            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
+            <option value="ALL">모든 담당팀 (Owner)</option>
+          </select>
+
+          <select id="findingFilter" onchange="onFilterChange()"
+            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
             <option value="ALL">모든 진단 상태 (Findings)</option>
             <option value="SAVINGS">💰 비용 절감 가능 항목만</option>
             <option value="ExtendedSupport">⏳ Extended Support (EKS·RDS 버전 업데이트)</option>
@@ -370,9 +404,9 @@
             <option value="Underprovisioned">🔥 Underprovisioned (성능 위험 / 스펙 부족)</option>
           </select>
 
-          <input id="searchInput" type="text" oninput="renderTable()"
+          <input id="searchInput" type="text" oninput="onFilterChange()"
             placeholder="리소스명, ID, 태그(Owner/Env) 검색..."
-            class="w-64 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+            class="w-56 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500" />
         </div>
       </div>
 
@@ -395,6 +429,34 @@
             <!-- Populated by JS -->
           </tbody>
         </table>
+      </div>
+
+      <!-- Table Pagination & Filtered Summary Footer -->
+      <div id="paginationBar" class="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs text-slate-600 dark:text-slate-400">
+        <div id="pageRangeInfo" class="font-medium">
+          총 0개 리소스 표시 중
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="text-[11px] text-slate-500 dark:text-slate-400">페이지당 표시:</label>
+          <select id="pageSizeSelect" onchange="onPageSizeChange(this.value)"
+            class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-800 dark:text-slate-200 cursor-pointer focus:outline-none">
+            <option value="20">20개씩</option>
+            <option value="50" selected>50개씩</option>
+            <option value="100">100개씩</option>
+            <option value="999999">전체 보기</option>
+          </select>
+          <div class="flex items-center gap-1 ml-1">
+            <button id="prevPageBtn" onclick="changePage(-1)"
+              class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold disabled:opacity-40 cursor-pointer transition">
+              ◀ 이전
+            </button>
+            <span id="pageNumIndicator" class="px-2.5 py-1 font-bold text-slate-800 dark:text-slate-200">1 / 1</span>
+            <button id="nextPageBtn" onclick="changePage(1)"
+              class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold disabled:opacity-40 cursor-pointer transition">
+              다음 ▶
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -483,25 +545,42 @@
               <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center shrink-0">2</span>
               <h4 class="text-sm font-bold text-slate-900 dark:text-white">CloudShell에서 다운로드한 JSON 스냅샷 업로드</h4>
             </div>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              CloudShell 우측 상단 <strong>[Actions] → [Download file]</strong>에서 추출된 JSON 파일을 다운로드한 후 아래에서 선택하세요.
-            </p>
 
-            <!-- Custom Interactive File Picker Box -->
+            <!-- CloudShell File Download Visual Guide -->
+            <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 space-y-1.5 text-[11px]">
+              <div class="text-slate-600 dark:text-slate-300 font-medium">
+                💡 CloudShell 우측 상단 <strong>[Actions] ➔ [Download file]</strong> 클릭 후 아래 파일명을 입력해 다운로드하세요:
+              </div>
+              <div class="flex items-center justify-between gap-2 bg-slate-900 text-emerald-300 px-2.5 py-1.5 rounded-md font-mono text-xs">
+                <span class="truncate">aws_optimizer_snapshot.json</span>
+                <button id="copyFnBtn" type="button" onclick="copySnapshotFilename()"
+                  class="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-[10px] font-bold whitespace-nowrap cursor-pointer transition">
+                  📋 파일명 복사
+                </button>
+              </div>
+            </div>
+
+            <!-- Custom Interactive File Picker Box (Supports Multiple Files & Drag-and-Drop) -->
             <label for="snapshotFileInput"
               class="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/90 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500/80 hover:bg-emerald-500/5 cursor-pointer transition group">
               <div class="flex items-center gap-2.5 min-w-0">
                 <span class="px-3 py-1.5 rounded-lg bg-indigo-600 group-hover:bg-indigo-500 text-white text-xs font-extrabold shadow-xs whitespace-nowrap cursor-pointer transition flex items-center gap-1.5">
                   <span>📂</span>
-                  <span>JSON 파일 선택</span>
+                  <span>JSON 파일 선택 (다중 가능)</span>
                 </span>
                 <span id="selectedSnapshotFileName" class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
-                  선택된 파일 없음 (.json)
+                  선택된 파일 없음 (.json 드래그 앤 드롭 가능)
                 </span>
               </div>
               <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap pr-1 hidden sm:inline">클릭하여 찾기 →</span>
             </label>
-            <input id="snapshotFileInput" type="file" accept=".json" onchange="onSnapshotFileChange(this)" class="hidden" />
+            <input id="snapshotFileInput" type="file" accept=".json" multiple onchange="onSnapshotFileChange(this)" class="hidden" />
+
+            <!-- Multi-Account / Multi-Region Merge Option -->
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-700 dark:text-slate-300 select-none pt-0.5">
+              <input id="mergeSnapshotToggle" type="checkbox" class="w-3.5 h-3.5 accent-indigo-600 rounded cursor-pointer" />
+              <span class="font-semibold">➕ 기존 분석 데이터에 병합 (멀티 계정 / 멀티 리전 스냅샷 통합 분석)</span>
+            </label>
 
             <button onclick="uploadSnapshotFile()"
               class="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold cursor-pointer transition shadow-sm flex items-center justify-center gap-1.5">
@@ -632,10 +711,23 @@
 
     let currentFxSource = 'AWS Invoice (직전 마감 청구서 확정 환율)';
     let currentRawPayload = null;
+    let isBackendAvailable = false;
+    let currentPage = 1;
+    let pageSize = 50;
 
     function getKrwRate() {
       const val = parseFloat(document.getElementById('krwRateInput').value);
       return isNaN(val) || val <= 0 ? 1384.5 : val;
+    }
+
+    function saveSessionPayload(rawObj) {
+      try {
+        if (rawObj) {
+          sessionStorage.setItem('co_studio_raw_payload', JSON.stringify(rawObj));
+        } else {
+          sessionStorage.removeItem('co_studio_raw_payload');
+        }
+      } catch (e) {}
     }
 
     function applyExchangeRateFromState() {
@@ -678,26 +770,85 @@
       if (window.STUDIO_DEMO_RAW) {
         currentRawPayload = window.STUDIO_DEMO_RAW;
       }
+
+      // 1. Check if user has an active uploaded snapshot in sessionStorage
+      try {
+        const cachedRawStr = sessionStorage.getItem('co_studio_raw_payload');
+        if (cachedRawStr && window.normalizeDataset) {
+          const cachedRaw = JSON.parse(cachedRawStr);
+          currentRawPayload = cachedRaw;
+          const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
+          const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
+          dashboardState = window.normalizeDataset(cachedRaw, grav, excl);
+          if (dashboardState.metadata && (!dashboardState.metadata.sourceMode || dashboardState.metadata.sourceMode === 'demo')) {
+            dashboardState.metadata.sourceMode = 'cloudshell_snapshot';
+          }
+          applyExchangeRateFromState();
+          renderAll();
+          return;
+        }
+      } catch (e) {}
+
+      // 2. Check if local FastAPI backend is running
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 800);
         const res = await fetch('/api/dashboard', { signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {
+          isBackendAvailable = true;
           dashboardState = await res.json();
           applyExchangeRateFromState();
           renderAll();
           return;
         }
       } catch (e) {
-        // Fallback to client-side mode
+        isBackendAvailable = false;
       }
 
+      // 3. Fallback to standalone Demo Dataset
       if (window.STUDIO_DEMO_STATE) {
         dashboardState = JSON.parse(JSON.stringify(window.STUDIO_DEMO_STATE));
         applyExchangeRateFromState();
         renderAll();
       }
+    }
+
+    function populateDynamicFilters() {
+      if (!dashboardState || !dashboardState.items) return;
+      const items = dashboardState.items;
+
+      const acctSel = document.getElementById('accountFilter');
+      const envSel = document.getElementById('envFilter');
+      const ownSel = document.getElementById('ownerFilter');
+      if (!acctSel || !envSel || !ownSel) return;
+
+      const prevAcct = acctSel.value;
+      const prevEnv = envSel.value;
+      const prevOwn = ownSel.value;
+
+      const acctSet = new Set();
+      const envSet = new Set();
+      const ownSet = new Set();
+
+      for (const i of items) {
+        const acctReg = `${i.accountId || '-'} (${i.region || dashboardState.metadata?.region || 'ap-northeast-2'})`;
+        acctSet.add(acctReg);
+        if (i.environment && i.environment !== '-') envSet.add(i.environment);
+        if (i.owner && i.owner !== '-') ownSet.add(i.owner);
+      }
+
+      acctSel.innerHTML = `<option value="ALL">모든 계정/리전 (${acctSet.size})</option>` +
+        Array.from(acctSet).sort().map(v => `<option value="${v}">${v}</option>`).join('');
+      if (Array.from(acctSet).includes(prevAcct)) acctSel.value = prevAcct;
+
+      envSel.innerHTML = `<option value="ALL">모든 환경 (${envSet.size})</option>` +
+        Array.from(envSet).sort().map(v => `<option value="${v}">Env: ${v}</option>`).join('');
+      if (Array.from(envSet).includes(prevEnv)) envSel.value = prevEnv;
+
+      ownSel.innerHTML = `<option value="ALL">모든 담당팀 (${ownSet.size})</option>` +
+        Array.from(ownSet).sort().map(v => `<option value="${v}">Owner: ${v}</option>`).join('');
+      if (Array.from(ownSet).includes(prevOwn)) ownSel.value = prevOwn;
     }
 
     function renderAll() {
@@ -718,10 +869,19 @@
       const modeMap = {
         demo: 'DEMO DATASET (시연 데이터)',
         cloudshell_snapshot: 'CLOUDSHELL SNAPSHOT (실제 계정)',
+        merged_snapshots: 'MULTI-SNAPSHOT MERGED (통합 분석)',
         live_sts: 'LIVE STS SESSION (실시간 연결)',
         aws_profile: 'AWS SSO / PROFILE (실시간 연결)'
       };
       document.getElementById('sourceBadge').textContent = modeMap[meta.sourceMode] || meta.sourceMode;
+      const clearBtn = document.getElementById('clearSessionBtn');
+      if (clearBtn) {
+        if (meta.sourceMode && meta.sourceMode !== 'demo') {
+          clearBtn.classList.remove('hidden');
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+      }
       document.getElementById('accountSubtext').textContent =
         `Account: ${meta.accountId} (${meta.accountAlias}) | Region: ${meta.region} | CO 상태: ${meta.computeOptimizerStatus || 'Active'} | 100% Read-Only 안전 점검`;
 
@@ -785,6 +945,7 @@
       document.getElementById('auditStgUsd').innerHTML = `${fmtUsd(stgUsd)}<span class="text-[10px] font-normal text-slate-400">/월</span>`;
       document.getElementById('auditStgKrw').textContent = `${fmtKrw(stgUsd)}/월 절감`;
 
+      populateDynamicFilters();
       renderCharts();
       renderRoadmap();
       renderTable();
@@ -964,6 +1125,7 @@
 
     function setCategoryFilter(cat) {
       selectedCategory = cat;
+      currentPage = 1;
       document.querySelectorAll('#categoryTabs .tab-btn').forEach(btn => {
         if (btn.getAttribute('data-cat') === cat) {
           btn.className = 'tab-btn tab-active px-3.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 cursor-pointer transition';
@@ -971,6 +1133,22 @@
           btn.className = 'tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition';
         }
       });
+      renderTable();
+    }
+
+    function onFilterChange() {
+      currentPage = 1;
+      renderTable();
+    }
+
+    function onPageSizeChange(val) {
+      pageSize = parseInt(val, 10) || 50;
+      currentPage = 1;
+      renderTable();
+    }
+
+    function changePage(delta) {
+      currentPage = Math.max(1, currentPage + delta);
       renderTable();
     }
 
@@ -1000,12 +1178,21 @@
     function renderTable() {
       if (!dashboardState) return;
       const items = dashboardState.items || [];
-      const findingFilter = document.getElementById('findingFilter').value;
-      const q = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+      const findingFilter = document.getElementById('findingFilter')?.value || 'ALL';
+      const accountFilter = document.getElementById('accountFilter')?.value || 'ALL';
+      const envFilter = document.getElementById('envFilter')?.value || 'ALL';
+      const ownerFilter = document.getElementById('ownerFilter')?.value || 'ALL';
+      const q = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
 
       const filtered = items.filter(item => {
         const fNorm = String(item.finding || '').trim().toUpperCase().replace(/[_-]/g, '');
         if (selectedCategory !== 'ALL' && item.category !== selectedCategory) return false;
+        if (accountFilter !== 'ALL') {
+          const itemAcctReg = `${item.accountId || '-'} (${item.region || dashboardState.metadata?.region || 'ap-northeast-2'})`;
+          if (itemAcctReg !== accountFilter) return false;
+        }
+        if (envFilter !== 'ALL' && item.environment !== envFilter) return false;
+        if (ownerFilter !== 'ALL' && item.owner !== ownerFilter) return false;
         if (findingFilter === 'SAVINGS' && (item.monthlySavingsUsd || 0) <= 0) return false;
         if (findingFilter === 'ExtendedSupport' && fNorm !== 'EXTENDEDSUPPORT') return false;
         if (findingFilter === 'Overprovisioned' && fNorm !== 'OVERPROVISIONED') return false;
@@ -1014,23 +1201,47 @@
         if (findingFilter === 'Underprovisioned' && fNorm !== 'UNDERPROVISIONED') return false;
 
         if (q) {
-          const hay = `${item.name} ${item.id} ${item.category} ${item.environment} ${item.owner} ${item.currentConfig} ${item.recommendedConfig}`.toLowerCase();
+          const hay = `${item.name} ${item.id} ${item.category} ${item.accountId} ${item.region || ''} ${item.environment} ${item.owner} ${item.currentConfig} ${item.recommendedConfig}`.toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
       });
 
+      const totalFiltered = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const startIdx = (currentPage - 1) * pageSize;
+      const pagedItems = filtered.slice(startIdx, startIdx + pageSize);
+      const filteredMonthlyUsd = filtered.reduce((acc, cur) => acc + (cur.monthlySavingsUsd || 0), 0);
+
+      const rangeEl = document.getElementById('pageRangeInfo');
+      if (rangeEl) {
+        if (totalFiltered === 0) {
+          rangeEl.textContent = '검색 조건에 일치하는 리소스 0개';
+        } else {
+          const endIdx = Math.min(startIdx + pageSize, totalFiltered);
+          rangeEl.innerHTML = `총 <strong>${totalFiltered}</strong>개 중 <strong>${startIdx + 1}–${endIdx}</strong>번째 표시 <span class="ml-2 text-orange-600 dark:text-orange-400 font-bold">(필터 합계: 월 ${fmtUsd(filteredMonthlyUsd)} · ${fmtKrw(filteredMonthlyUsd)})</span>`;
+        }
+      }
+      const pageNumEl = document.getElementById('pageNumIndicator');
+      if (pageNumEl) pageNumEl.textContent = `${currentPage} / ${totalPages}`;
+      const prevBtn = document.getElementById('prevPageBtn');
+      if (prevBtn) prevBtn.disabled = currentPage <= 1;
+      const nextBtn = document.getElementById('nextPageBtn');
+      if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+
       const tbody = document.getElementById('resourceTableBody');
-      if (filtered.length === 0) {
+      if (totalFiltered === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-slate-500">조건에 해당하는 리소스 권고사항이 없습니다.</td></tr>`;
         return;
       }
 
-      tbody.innerHTML = filtered.map(item => {
+      tbody.innerHTML = pagedItems.map(item => {
         const monthly = item.monthlySavingsUsd || 0;
         const annual = item.annualSavingsUsd || 0;
         const fNorm = String(item.finding || '').trim().toUpperCase().replace(/[_-]/g, '');
         const isOptimizedOrSame = fNorm === 'OPTIMIZED' || (item.currentConfig === item.recommendedConfig && monthly <= 0 && fNorm !== 'UNDERPROVISIONED');
+        const itemReg = item.region || dashboardState.metadata?.region || 'ap-northeast-2';
         return `
           <tr class="hover:bg-slate-100/70 dark:hover:bg-slate-800/40 transition">
             <td class="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-200">
@@ -1040,6 +1251,7 @@
               <div class="font-bold text-slate-900 dark:text-white">${item.name}</div>
               <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">${item.id}</div>
               <div class="flex flex-wrap gap-1 mt-1">
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 font-mono">${itemReg}</span>
                 <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Env: ${item.environment}</span>
                 <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Owner: ${item.owner}</span>
               </div>
@@ -1140,11 +1352,17 @@
     }
 
     function downloadReport(type) {
-      if (type === 'excel' && window.exportReportCsv) {
-        window.exportReportCsv(dashboardState);
-        return;
-      }
       const rate = getKrwRate();
+      if (!isBackendAvailable) {
+        if (type === 'excel' && window.exportReportCsv) {
+          window.exportReportCsv(dashboardState, rate);
+          return;
+        }
+        if (type === 'word' && window.exportReportDoc) {
+          window.exportReportDoc(dashboardState, rate, currentFxSource);
+          return;
+        }
+      }
       const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
       const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
       const src = encodeURIComponent(currentFxSource || 'AWS Invoice / 기준환율');
@@ -1156,6 +1374,10 @@
 
     function openHtmlReport() {
       const rate = getKrwRate();
+      if (!isBackendAvailable && window.exportReportHtml) {
+        window.exportReportHtml(dashboardState, rate, currentFxSource);
+        return;
+      }
       const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
       const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
       const src = encodeURIComponent(currentFxSource || 'AWS Invoice / 기준환율');
@@ -1198,40 +1420,82 @@
       }
     }
 
+    function copySnapshotFilename() {
+      navigator.clipboard.writeText('aws_optimizer_snapshot.json');
+      const btn = document.getElementById('copyFnBtn');
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✅ 복사됨!';
+        btn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.replace('bg-emerald-600', 'bg-indigo-600');
+        }, 1800);
+      }
+    }
+
     function onSnapshotFileChange(input) {
       const nameEl = document.getElementById('selectedSnapshotFileName');
       if (!nameEl) return;
       if (input.files && input.files.length > 0) {
-        const f = input.files[0];
-        const kb = (f.size / 1024).toFixed(1);
-        nameEl.textContent = `✅ ${f.name} (${kb} KB)`;
+        if (input.files.length === 1) {
+          const f = input.files[0];
+          const kb = (f.size / 1024).toFixed(1);
+          nameEl.textContent = `✅ ${f.name} (${kb} KB)`;
+        } else {
+          const totKb = Array.from(input.files).reduce((acc, f) => acc + f.size, 0) / 1024;
+          nameEl.textContent = `✅ ${input.files.length}개 스냅샷 파일 선택됨 (총 ${totKb.toFixed(1)} KB)`;
+        }
         nameEl.className = 'text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate';
       } else {
-        nameEl.textContent = '선택된 파일 없음 (.json)';
+        nameEl.textContent = '선택된 파일 없음 (.json 드래그 앤 드롭 가능)';
         nameEl.className = 'text-xs font-medium text-slate-500 dark:text-slate-400 truncate';
       }
     }
 
-    function handleSnapshotFile(file) {
-      const reader = new FileReader();
-      reader.onload = function(e) {
+    async function handleSnapshotFiles(fileList, forceMerge = null) {
+      const files = Array.from(fileList || []).filter(f => f.name.toLowerCase().endsWith('.json'));
+      if (files.length === 0) {
+        alert('유효한 .json 스냅샷 파일을 선택해 주세요.');
+        return;
+      }
+
+      const mergeChecked = forceMerge !== null
+        ? forceMerge
+        : (document.getElementById('mergeSnapshotToggle')?.checked ?? false);
+
+      let combinedRaw = (mergeChecked && currentRawPayload && currentRawPayload.metadata?.sourceMode !== 'demo')
+        ? currentRawPayload
+        : null;
+
+      for (const file of files) {
         try {
-          const rawJson = JSON.parse(e.target.result);
-          currentRawPayload = rawJson;
-          const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
-          const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
-          dashboardState = window.normalizeDataset(rawJson, grav, excl);
-          if (dashboardState.metadata) {
-            dashboardState.metadata.sourceMode = 'cloudshell_snapshot';
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          if (combinedRaw && window.mergeRawSnapshots) {
+            combinedRaw = window.mergeRawSnapshots(combinedRaw, parsed);
+          } else {
+            combinedRaw = parsed;
+            if (combinedRaw.metadata && (!combinedRaw.metadata.sourceMode || combinedRaw.metadata.sourceMode === 'demo')) {
+              combinedRaw.metadata.sourceMode = 'cloudshell_snapshot';
+            }
           }
-          applyExchangeRateFromState();
-          renderAll();
-          closeCloudShellModal();
         } catch (err) {
-          alert('JSON 스냅샷 파싱 실패: ' + err.message);
+          alert(`파일(${file.name}) JSON 파싱 실패: ` + err.message);
+          return;
         }
-      };
-      reader.readAsText(file);
+      }
+
+      currentRawPayload = combinedRaw;
+      saveSessionPayload(currentRawPayload);
+
+      const grav = document.getElementById('ec2GravitonToggle')?.checked ?? true;
+      const excl = document.getElementById('excludeOptimizedToggle')?.checked ?? false;
+      dashboardState = window.normalizeDataset(currentRawPayload, grav, excl);
+      currentPage = 1;
+      applyExchangeRateFromState();
+      renderAll();
+      closeCloudShellModal();
     }
 
     async function uploadSnapshotFile() {
@@ -1240,8 +1504,7 @@
         alert('업로드할 CloudShell JSON 파일을 먼저 선택해주세요.');
         return;
       }
-      const file = input.files[0];
-      handleSnapshotFile(file);
+      await handleSnapshotFiles(input.files);
     }
 
     function toggleLiveInputs() {
@@ -1293,22 +1556,41 @@
     }
 
     async function resetDemoData() {
+      saveSessionPayload(null);
       currentRawPayload = window.STUDIO_DEMO_RAW;
       dashboardState = JSON.parse(JSON.stringify(window.STUDIO_DEMO_STATE));
+      currentPage = 1;
       applyExchangeRateFromState();
       renderAll();
       closeCloudShellModal();
     }
 
-    // Global drag & drop support: drag a .json file anywhere onto the page to inspect!
-    window.addEventListener('dragover', (e) => { e.preventDefault(); });
-    window.addEventListener('drop', (e) => {
+    // Global Drag & Drop with Full-Screen Overlay
+    let dragDepth = 0;
+    window.addEventListener('dragenter', (e) => {
       e.preventDefault();
+      dragDepth++;
+      const ov = document.getElementById('dropzoneOverlay');
+      if (ov) ov.classList.remove('hidden');
+    });
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) {
+        const ov = document.getElementById('dropzoneOverlay');
+        if (ov) ov.classList.add('hidden');
+      }
+    });
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dragDepth = 0;
+      const ov = document.getElementById('dropzoneOverlay');
+      if (ov) ov.classList.add('hidden');
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        if (file.name.endsWith('.json')) {
-          handleSnapshotFile(file);
-        }
+        await handleSnapshotFiles(e.dataTransfer.files);
       }
     });
 

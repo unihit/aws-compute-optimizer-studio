@@ -1,4 +1,4 @@
-import os, json
+import os, json, shutil
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from backend.mock_data import get_sample_dataset
 from backend.collector import normalize_dataset, generate_cloudshell_script
@@ -21,9 +21,17 @@ body = r"""
   const REGIONAL_PRICING_TABLE = {
     'ap-northeast-2': { regionLabel: '서울 (ap-northeast-2)', natHourlyUsd: 0.059, natPerGbUsd: 0.059, natMonthlyFixedUsd: 43.07, albHourlyUsd: 0.0243, albMonthlyFixedUsd: 21.39, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
     'ap-south-1': { regionLabel: '뭄바이 (ap-south-1)', natHourlyUsd: 0.056, natPerGbUsd: 0.056, natMonthlyFixedUsd: 40.88, albHourlyUsd: 0.0225, albMonthlyFixedUsd: 20.08, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'ap-south-2': { regionLabel: '하이데라바드 (ap-south-2)', natHourlyUsd: 0.056, natPerGbUsd: 0.056, natMonthlyFixedUsd: 40.88, albHourlyUsd: 0.0225, albMonthlyFixedUsd: 20.08, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'ap-northeast-1': { regionLabel: '도쿄 (ap-northeast-1)', natHourlyUsd: 0.062, natPerGbUsd: 0.062, natMonthlyFixedUsd: 45.26, albHourlyUsd: 0.0243, albMonthlyFixedUsd: 21.39, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'ap-northeast-3': { regionLabel: '오사카 (ap-northeast-3)', natHourlyUsd: 0.062, natPerGbUsd: 0.062, natMonthlyFixedUsd: 45.26, albHourlyUsd: 0.0243, albMonthlyFixedUsd: 21.39, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'ap-southeast-1': { regionLabel: '싱가포르 (ap-southeast-1)', natHourlyUsd: 0.059, natPerGbUsd: 0.059, natMonthlyFixedUsd: 43.07, albHourlyUsd: 0.0252, albMonthlyFixedUsd: 22.05, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'ap-southeast-2': { regionLabel: '시드니 (ap-southeast-2)', natHourlyUsd: 0.059, natPerGbUsd: 0.059, natMonthlyFixedUsd: 43.07, albHourlyUsd: 0.0252, albMonthlyFixedUsd: 22.05, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.055, cwLogsPerGbUsd: 0.033 },
     'us-east-1': { regionLabel: '미국 버지니아 (us-east-1)', natHourlyUsd: 0.045, natPerGbUsd: 0.045, natMonthlyFixedUsd: 32.85, albHourlyUsd: 0.0225, albMonthlyFixedUsd: 20.08, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'us-east-2': { regionLabel: '미국 오하이오 (us-east-2)', natHourlyUsd: 0.045, natPerGbUsd: 0.045, natMonthlyFixedUsd: 32.85, albHourlyUsd: 0.0225, albMonthlyFixedUsd: 20.08, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'us-west-1': { regionLabel: '미국 캘리포니아 (us-west-1)', natHourlyUsd: 0.048, natPerGbUsd: 0.048, natMonthlyFixedUsd: 35.04, albHourlyUsd: 0.027, albMonthlyFixedUsd: 23.36, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.055, cwLogsPerGbUsd: 0.033 },
     'us-west-2': { regionLabel: '미국 오레곤 (us-west-2)', natHourlyUsd: 0.045, natPerGbUsd: 0.045, natMonthlyFixedUsd: 32.85, albHourlyUsd: 0.0225, albMonthlyFixedUsd: 20.08, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
-    'ap-northeast-1': { regionLabel: '도쿄 (ap-northeast-1)', natHourlyUsd: 0.062, natPerGbUsd: 0.062, natMonthlyFixedUsd: 45.26, albHourlyUsd: 0.0243, albMonthlyFixedUsd: 21.39, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 }
+    'eu-west-1': { regionLabel: '아일랜드 (eu-west-1)', natHourlyUsd: 0.048, natPerGbUsd: 0.048, natMonthlyFixedUsd: 35.04, albHourlyUsd: 0.0252, albMonthlyFixedUsd: 22.05, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 },
+    'eu-central-1': { regionLabel: '프랑크푸르트 (eu-central-1)', natHourlyUsd: 0.048, natPerGbUsd: 0.048, natMonthlyFixedUsd: 35.04, albHourlyUsd: 0.0252, albMonthlyFixedUsd: 22.05, eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65, ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03 }
   };
 
   function getRegionalPricing(region) {
@@ -34,6 +42,16 @@ body = r"""
       eipHourlyUsd: 0.005, eipMonthlyUsd: 3.65,
       ebsSnapPerGbUsd: 0.05, cwLogsPerGbUsd: 0.03
     };
+  }
+
+  function extractRegionFromArn(arn, fallback = 'ap-northeast-2') {
+    if (arn && String(arn).startsWith('arn:aws:')) {
+      const parts = String(arn).split(':');
+      if (parts.length >= 4 && parts[3].trim()) {
+        return parts[3].trim();
+      }
+    }
+    return fallback;
   }
 
   function extractTag(tags, key, fallback = '-') {
@@ -56,10 +74,11 @@ body = r"""
     return out;
   }
 
-  function extractMetric(metrics, name) {
+  function extractMetric(metrics, namePrefix) {
     if (!Array.isArray(metrics)) return null;
+    const prefix = String(namePrefix || '').toUpperCase();
     for (const m of metrics) {
-      if ((m.name || '').toUpperCase() === name.toUpperCase()) {
+      if (String(m.name || '').toUpperCase().startsWith(prefix)) {
         const v = m.value ?? m.statistic;
         return typeof v === 'number' ? Math.round(v * 10) / 10 : v;
       }
@@ -83,13 +102,105 @@ body = r"""
     return fam.endsWith('g') || fam.endsWith('gd') || fam.endsWith('gn');
   }
 
+  function mergeRawSnapshots(baseRaw, newRaw) {
+    if (!baseRaw) return newRaw;
+    if (!newRaw) return baseRaw;
+    const merged = JSON.parse(JSON.stringify(baseRaw));
+    const bMeta = merged.metadata || {};
+    const nMeta = newRaw.metadata || {};
+
+    const bAccts = new Set(String(bMeta.accountId || '').split(',').map(x => x.trim()).filter(Boolean));
+    const nAccts = new Set(String(nMeta.accountId || '').split(',').map(x => x.trim()).filter(Boolean));
+    for (const a of nAccts) bAccts.add(a);
+    const allAccts = Array.from(bAccts).sort();
+
+    const bRegs = new Set(String(bMeta.region || '').split(',').map(x => x.trim()).filter(Boolean));
+    const nRegs = new Set(String(nMeta.region || '').split(',').map(x => x.trim()).filter(Boolean));
+    for (const r of nRegs) bRegs.add(r);
+    const allRegs = Array.from(bRegs).sort();
+
+    merged.metadata = Object.assign({}, bMeta, {
+      accountId: allAccts.length ? allAccts.join(', ') : 'Multi-Account',
+      accountAlias: allAccts.length > 1 ? `Multi-Account (${allAccts.length}개 계정 통합)` : (nMeta.accountAlias || bMeta.accountAlias || 'aws-account'),
+      region: allRegs.length ? allRegs.join(', ') : 'ap-northeast-2',
+      collectedAt: nMeta.collectedAt || bMeta.collectedAt,
+      sourceMode: 'merged_snapshots'
+    });
+
+    const listKeys = [
+      ['ec2', 'instanceArn'],
+      ['ebs', 'volumeArn'],
+      ['rds', 'resourceArn'],
+      ['ecs', 'serviceArn'],
+      ['lambda', 'functionArn'],
+      ['idle', 'resourceArn'],
+      ['extendedSupport', 'resourceArn']
+    ];
+    for (const [key, idField] of listKeys) {
+      const existing = Array.from(merged[key] || []);
+      const seen = new Set(existing.map(x => String(x[idField] || x.resourceId || '')));
+      for (const item of (newRaw[key] || [])) {
+        const kVal = String(item[idField] || item.resourceId || '');
+        if (!seen.has(kVal)) {
+          existing.push(item);
+          seen.add(kVal);
+        }
+      }
+      merged[key] = existing;
+    }
+
+    const bNet = merged.networkAudit || { summary: {}, items: [] };
+    const nNet = newRaw.networkAudit || { summary: {}, items: [] };
+    const netSeen = new Set((bNet.items || []).map(x => String(x.resourceId || '')));
+    const netItems = Array.from(bNet.items || []);
+    for (const ni of (nNet.items || [])) {
+      const k = String(ni.resourceId || '');
+      if (!netSeen.has(k)) {
+        netItems.push(ni);
+        netSeen.add(k);
+      }
+    }
+    const netSum = {};
+    for (const sk of ['totalEipCount', 'unattachedEipCount', 'totalAlbCount', 'idleOrNoTargetAlbCount', 'totalNatGwCount', 'idleOrRedundantNatGwCount', 'missingS3EndpointVpcCount']) {
+      netSum[sk] = Number((bNet.summary || {})[sk] || 0) + Number((nNet.summary || {})[sk] || 0);
+    }
+    merged.networkAudit = { summary: netSum, items: netItems };
+
+    const bStg = merged.storageLifecycleAudit || { summary: {}, items: [] };
+    const nStg = newRaw.storageLifecycleAudit || { summary: {}, items: [] };
+    const stgSeen = new Set((bStg.items || []).map(x => String(x.resourceId || '')));
+    const stgItems = Array.from(bStg.items || []);
+    for (const si of (nStg.items || [])) {
+      const k = String(si.resourceId || '');
+      if (!stgSeen.has(k)) {
+        stgItems.push(si);
+        stgSeen.add(k);
+      }
+    }
+    const stgSum = {};
+    for (const sk of ['agedEbsSnapshotCount', 'agedEbsSnapshotTotalGb', 'agedRdsSnapshotCount', 'agedRdsSnapshotTotalGb', 'neverExpireLogGroupCount', 'neverExpireLogTotalGb', 's3NoLifecycleBucketCount']) {
+      stgSum[sk] = Number((bStg.summary || {})[sk] || 0) + Number((nStg.summary || {})[sk] || 0);
+    }
+    merged.storageLifecycleAudit = { summary: stgSum, items: stgItems };
+
+    const bCe = Number((merged.costExplorer || {}).lastMonthTotalUsd || 0);
+    const nCe = Number((newRaw.costExplorer || {}).lastMonthTotalUsd || 0);
+    merged.costExplorer = {
+      lastMonthTotalUsd: Math.round((bCe + nCe) * 100) / 100,
+      billingPeriod: '멀티 스냅샷 합산 청구액 기준'
+    };
+
+    return merged;
+  }
+
   function normalizeDataset(raw, allowEc2Graviton = true, excludeOptimized = false) {
     if (!raw) return window.STUDIO_DEMO_STATE;
 
     const meta = raw.metadata || {};
     const accountId = meta.accountId || 'Unknown';
     const region = meta.region || 'ap-northeast-2';
-    const regPricing = raw.regionalPricing || getRegionalPricing(region);
+    const primaryRegion = String(region).split(',')[0].trim() || 'ap-northeast-2';
+    const regPricing = raw.regionalPricing || getRegionalPricing(primaryRegion);
 
     const ec2List = raw.ec2 || raw.instanceRecommendations || [];
     const ebsList = raw.ebs || raw.volumeRecommendations || [];
@@ -134,9 +245,18 @@ body = r"""
       const projCpu = extractMetric(bestOpt.projectedUtilizationMetrics, 'CPU');
       const projMem = extractMetric(bestOpt.projectedUtilizationMetrics, 'MEMORY');
 
-      const compWarn = isGravitonRec
-        ? '⚠️ Graviton(ARM64) 전환 주의: OS 이미지(AMI), 네이티브 바이너리 및 컨테이너 런타임의 ARM64 호환성 사전 검증이 필수입니다.'
-        : null;
+      const curFam = currentCfg.includes('.') ? currentCfg.split('.')[0] : currentCfg;
+      const recFam = recCfg.includes('.') ? recCfg.split('.')[0] : recCfg;
+      let compWarn = null;
+      if (isGravitonRec) {
+        compWarn = '⚠️ [Graviton ARM64 & RI/SP 주의] OS 이미지(AMI)/컨테이너 ARM64 호환성 사전 검증이 필수이며, 기존 x86 Standard RI(예약 인스턴스) 적용 시 패밀리 변경으로 할인 혜택이 해제될 수 있습니다.';
+      } else if (finding === 'Overprovisioned' && recCfg !== currentCfg) {
+        if (curFam !== recFam) {
+          compWarn = `💡 [약정(RI/SP) 확인] 패밀리 변경(${curFam} → ${recFam}) 시 Standard RI 할인이 미적용될 수 있습니다. Compute Savings Plans 또는 Convertible RI 여부를 확인하세요.`;
+        } else {
+          compWarn = '💡 [약정(RI/SP) 확인] 인스턴스 크기 축소 시 활성 EC2 RI(Size-Flexible 여부) 및 Savings Plans 약정 사용률을 함께 점검하세요.';
+        }
+      }
 
       let altOpt = (filteredOptions.length > 1) ? filteredOptions[1].instanceType : null;
       if (altOpt === recCfg || finding === 'Optimized') altOpt = null;
@@ -151,6 +271,7 @@ body = r"""
       items.push({
         id: resId, arn, name, category: 'EC2', serviceLabel: 'Amazon EC2',
         accountId: rec.accountId || accountId,
+        region: extractRegionFromArn(arn, primaryRegion),
         environment: extractTag(tags, 'Environment', 'Production'),
         owner: extractTag(tags, 'Owner', '-'),
         serviceTag: extractTag(tags, 'Service', '-'),
@@ -197,14 +318,24 @@ body = r"""
       const rOps = extractMetric(rec.utilizationMetrics, 'VolumeReadOps');
       const wOps = extractMetric(rec.utilizationMetrics, 'VolumeWriteOps');
 
+      const curVolSize = Number(cur.volumeSize || 0);
+      const curBaseIops = Number(cur.volumeBaselineIOPS || 0);
+      const recBaseIops = Number(optCfg.volumeBaselineIOPS || 3000);
+      let ebsWarn = null;
+      if (cur.volumeType === 'gp2' && optCfg.volumeType === 'gp3' && (curVolSize > 1000 || curBaseIops > recBaseIops)) {
+        ebsWarn = `⚠️ [대용량 gp2 → gp3 Baseline IOPS 하락 주의] 1TB 초과 gp2(${curVolSize}GB, 기본 ${curBaseIops} IOPS / 250MB/s)를 기본 gp3(${recBaseIops} IOPS / 125MB/s)로 단순 전환하면 IOPS·처리량이 낮아집니다. 피크 IOPS를 확인하고 필요시 gp3 추가 IOPS/Throughput을 프로비저닝하세요.`;
+      }
+
       items.push({
         id: resId, arn, name, category: 'EBS', serviceLabel: 'Amazon EBS',
         accountId: rec.accountId || accountId,
+        region: extractRegionFromArn(arn, primaryRegion),
         environment: extractTag(tags, 'Environment', 'Production'),
         owner: extractTag(tags, 'Owner', '-'),
         serviceTag: extractTag(tags, 'Service', 'Storage'),
         finding: findingEbs, reasonCodes: ['EBSVolumeTypeOptimization'],
         currentConfig: curStr, recommendedConfig: recStr, alternativeConfig: null,
+        compatibilityWarning: ebsWarn,
         migrationEffort: 'VeryLow', performanceRisk: rec.currentPerformanceRisk || 'VeryLow',
         platformDifferences: [],
         utilizationSummary: `Read ${rOps || 0} IOPS / Write ${wOps || 0} IOPS`,
@@ -276,14 +407,21 @@ body = r"""
         }
       }
 
+      let rdsWarn = null;
+      if (recCls !== curCls && monthlySav > 0) {
+        rdsWarn = `💡 [RDS 예약 인스턴스(RI) 확인] ${curCls} → ${recCls} 클래스 변경 전 활성 RDS RI 약정 적용 여부를 확인하세요. (패밀리 변경 시 RI 할인이 해제될 수 있음)`;
+      }
+
       items.push({
         id: resId, arn, name: resId, category: 'RDS', serviceLabel: 'Amazon RDS / Aurora',
         accountId: rec.accountId || accountId,
+        region: extractRegionFromArn(arn, primaryRegion),
         environment: extractTag(tags, 'Environment', 'Production'),
         owner: extractTag(tags, 'Owner', '-'),
         serviceTag: extractTag(tags, 'Service', 'Database'),
         finding, reasonCodes: reasons, currentConfig: curStr, recommendedConfig: recStr,
-        alternativeConfig: null, migrationEffort: 'Low', performanceRisk: 'Low',
+        alternativeConfig: null, compatibilityWarning: rdsWarn,
+        migrationEffort: 'Low', performanceRisk: 'Low',
         platformDifferences: (recCls.includes('g.') && !curCls.includes('g.')) ? ['GravitonDB'] : [],
         utilizationSummary: `CPU Max ${cpuMax || 0}% / FreeableMem ${memMax || 0}%`,
         projectedSummary: projTxt,
@@ -323,6 +461,7 @@ body = r"""
       items.push({
         id: resId, arn, name: resId, category: 'ECS', serviceLabel: 'Amazon ECS (Fargate)',
         accountId: rec.accountId || accountId,
+        region: extractRegionFromArn(arn, primaryRegion),
         environment: extractTag(tags, 'Environment', 'Production'),
         owner: extractTag(tags, 'Owner', '-'),
         serviceTag: extractTag(tags, 'Service', 'Container'),
@@ -378,6 +517,7 @@ body = r"""
       items.push({
         id: resId, arn, name: resId.replace(':$LATEST', ''), category: 'Lambda', serviceLabel: 'AWS Lambda',
         accountId: rec.accountId || accountId,
+        region: extractRegionFromArn(arn, primaryRegion),
         environment: extractTag(tags, 'Environment', 'Production'),
         owner: extractTag(tags, 'Owner', '-'),
         serviceTag: extractTag(tags, 'Service', 'Serverless'),
@@ -412,6 +552,7 @@ body = r"""
       items.push({
         id: resId, arn, name, category: 'Idle', serviceLabel: `Idle (${rtype})`,
         accountId: rec.accountId || accountId,
+        region: extractRegionFromArn(arn, primaryRegion),
         environment: extractTag(tags, 'Environment', 'Staging'),
         owner: extractTag(tags, 'Owner', '-'),
         serviceTag: extractTag(tags, 'Service', 'Unused'),
@@ -453,7 +594,7 @@ body = r"""
     for (const cn of discoveredK8s) {
       if (!existingEks.has(cn)) {
         extList.push({
-          resourceArn: `arn:aws:eks:${region}:${accountId}:cluster/${cn}`,
+          resourceArn: `arn:aws:eks:${primaryRegion}:${accountId}:cluster/${cn}`,
           resourceId: `eks-cluster/${cn}`,
           resourceName: cn,
           serviceType: 'EKS',
@@ -480,11 +621,14 @@ body = r"""
       const engineLabel = rec.engineOrPlatform || stype;
       const monthlySav = parseFloat(rec.monthlySurchargeUsd || 0.0);
       const savPct = parseFloat(rec.savingsPercentage || 100.0);
+      const extArn = rec.resourceArn || resId;
 
       items.push({
-        id: resId, arn: rec.resourceArn || resId, name, category: 'ExtendedSupport',
+        id: resId, arn: extArn, name, category: 'ExtendedSupport',
         serviceLabel: `Extended Support (${stype})`,
-        accountId, environment: rec.environment || 'Production', owner: rec.owner || '-',
+        accountId,
+        region: extractRegionFromArn(extArn, primaryRegion),
+        environment: rec.environment || 'Production', owner: rec.owner || '-',
         serviceTag: stype, finding: 'ExtendedSupport', reasonCodes: ['VersionEndOfStandardSupport'],
         currentConfig: `${engineLabel} (v${curVer})`,
         recommendedConfig: `${recVer} 업데이트`,
@@ -507,7 +651,7 @@ body = r"""
       totalEipCount: 0, unattachedEipCount: 0, totalAlbCount: 0, idleOrNoTargetAlbCount: 0,
       totalNatGwCount: 0, idleOrRedundantNatGwCount: 0, missingS3EndpointVpcCount: 0
     };
-    const regLabel = regPricing.regionLabel || region;
+    const regLabel = regPricing.regionLabel || primaryRegion;
     const natHr = regPricing.natHourlyUsd || 0.059;
     const natGb = regPricing.natPerGbUsd || 0.059;
     const natMo = regPricing.natMonthlyFixedUsd || 43.07;
@@ -542,13 +686,20 @@ body = r"""
         projStr = `${regLabel} 리전 산식 적용 ($${natGb}/GB · $${natHr}/hr × 730 = $${natMo}/월)`;
       }
 
+      let netWarn = null;
+      if (subType === 'IdleNATGW') {
+        netWarn = '⚠️ [Cross-AZ 데이터 전송비 & 고가용성(HA) 주의] 운영(Production) 환경에서 가용영역(AZ)별 NAT Gateway를 단일 AZ로 통폐합하면 AZ 장애 시 단일장애점(SPOF)이 되며 Cross-AZ 데이터 전송비($0.01/GB)가 발생할 수 있습니다. 운영 환경은 무료 S3/DynamoDB Gateway VPC Endpoint만 우선 적용하고, 단일 NAT 통합은 비운영(Dev/Staging) 환경에만 적용하세요.';
+      }
+
       items.push({
         id: resId, arn: resId, name, category: 'Network', serviceLabel: 'EIP / ALB / NAT 점검',
-        accountId, environment: rec.environment || 'Production', owner: rec.owner || '-',
+        accountId,
+        region: extractRegionFromArn(resId, primaryRegion),
+        environment: rec.environment || 'Production', owner: rec.owner || '-',
         serviceTag: subType, finding, reasonCodes: [subType],
         currentConfig: rec.currentConfig || '-',
         recommendedConfig: rec.recommendedConfig || '무료 S3/DynamoDB Gateway VPC Endpoint 생성 및 비운영 NAT 통합',
-        alternativeConfig: null, isGravitonRecommendation: false, compatibilityWarning: null,
+        alternativeConfig: null, isGravitonRecommendation: false, compatibilityWarning: netWarn,
         migrationEffort: (subType === 'UnusedEIP' || finding === 'NotOptimized') ? 'VeryLow' : 'Low',
         performanceRisk: 'VeryLow', platformDifferences: [],
         utilizationSummary: utilStr, projectedSummary: projStr,
@@ -591,13 +742,21 @@ body = r"""
         utilDetail = `만료 미설정 로그 (${totLogGb} GB × ${regLabel} 단가 $${cwLogRate}/GB-월)`;
       }
 
+      let stgWarn = null;
+      if (subType === 'AgedEBSSnapshot') {
+        const archiveRate = Math.round(ebsSnapRate * 0.25 * 10000) / 10000;
+        stgWarn = `💡 [컴플라이언스 장기 보관 대안] 규정상 삭제가 불가한 90일+ 스냅샷은 'EBS Snapshot Archive' 티어로 전환 시 스토리지 단가를 최대 75%($${ebsSnapRate} → $${archiveRate}/GB-월, 최소 90일 보관) 절감할 수 있습니다.`;
+      }
+
       items.push({
         id: resId, arn: resId, name, category: 'StorageLifecycle', serviceLabel: '스냅샷 / 로그 / S3 수명주기',
-        accountId, environment: rec.environment || 'Production', owner: rec.owner || '-',
+        accountId,
+        region: extractRegionFromArn(resId, primaryRegion),
+        environment: rec.environment || 'Production', owner: rec.owner || '-',
         serviceTag: subType, finding, reasonCodes: [subType],
         currentConfig: rec.currentConfig || '-',
         recommendedConfig: rec.recommendedConfig || '수명주기(Lifecycle) 정책 적용',
-        alternativeConfig: null, isGravitonRecommendation: false, compatibilityWarning: null,
+        alternativeConfig: null, isGravitonRecommendation: false, compatibilityWarning: stgWarn,
         migrationEffort: 'VeryLow', performanceRisk: 'VeryLow', platformDifferences: [],
         utilizationSummary: utilDetail, projectedSummary: `${regLabel} 리전 스토리지 단가 기준 산출`,
         cpuMax: null, memoryMax: null,
@@ -734,22 +893,32 @@ body = r"""
     };
   }
 
-  function exportReportCsv(state) {
+  function exportReportCsv(state, krwRate = 1384.5) {
     if (!state || !state.items) return;
     const items = state.items;
+    const rate = Number(krwRate) || 1384.5;
     const headers = [
-      'Resource ID', 'Name', 'Category', 'Service Label', 'Account ID', 'Finding',
-      'Current Config', 'Recommended Config', 'Monthly Savings (USD)', 'Annual Savings (USD)',
-      'Savings (%)', 'Migration Effort', 'Performance Risk', 'Action Guidance'
+      'Category', 'Service Label', 'Resource Name', 'Resource ID', 'Account ID', 'Region',
+      'Environment', 'Owner', 'Finding', 'Current Config', 'Recommended Config',
+      'Utilization Summary', 'Monthly Savings (USD)', 'Monthly Savings (KRW)',
+      'Annual Savings (USD)', 'Annual Savings (KRW)', 'Savings (%)',
+      'Migration Effort', 'Performance Risk', 'Compatibility / FinOps Warning', 'Action Guidance'
     ];
     const rows = [headers.join(',')];
+    const escape = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     for (const i of items) {
-      const escape = v => '"' + String(v || '').replace(/"/g, '""') + '"';
+      const mUsd = Number(i.monthlySavingsUsd || 0);
+      const aUsd = Number(i.annualSavingsUsd || 0);
       rows.push([
-        escape(i.id), escape(i.name), escape(i.category), escape(i.serviceLabel), escape(i.accountId),
-        escape(i.finding), escape(i.currentConfig), escape(i.recommendedConfig),
-        i.monthlySavingsUsd || 0, i.annualSavingsUsd || 0, i.savingsPercentage || 0,
-        escape(i.migrationEffort), escape(i.performanceRisk), escape(i.actionGuidance)
+        escape(i.category), escape(i.serviceLabel), escape(i.name), escape(i.id),
+        escape(i.accountId), escape(i.region || state.metadata?.region || ''),
+        escape(i.environment), escape(i.owner), escape(i.finding),
+        escape(i.currentConfig), escape(i.recommendedConfig), escape(i.utilizationSummary),
+        mUsd.toFixed(2), Math.round(mUsd * rate),
+        aUsd.toFixed(2), Math.round(aUsd * rate),
+        i.savingsPercentage || 0,
+        escape(i.migrationEffort), escape(i.performanceRisk),
+        escape(i.compatibilityWarning || ''), escape(i.actionGuidance)
       ].join(','));
     }
     const csvContent = '\uFEFF' + rows.join('\r\n');
@@ -757,7 +926,209 @@ body = r"""
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `aws-finops-report-${state.metadata?.accountId || 'export'}.csv`);
+    link.setAttribute('download', `AWS_Compute_Optimizer_Report_${(state.metadata?.accountId || 'export').replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildExecutiveReportHtml(state, krwRate = 1384.5, fxSource = 'AWS Invoice 기준환율', forWord = false) {
+    const meta = (state && state.metadata) || {};
+    const kpis = (state && state.kpis) || {};
+    const items = (state && state.items) || [];
+    const rate = Number(krwRate) || 1384.5;
+    const fmtUsd = v => '$' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtKrw = v => '₩' + Math.round(Number(v || 0) * rate).toLocaleString('ko-KR');
+
+    const monthlyUsd = Number(kpis.totalMonthlySavingsUsd || 0);
+    const annualUsd = Number(kpis.totalAnnualSavingsUsd || 0);
+    const quickUsd = Number(kpis.quickWinMonthlySavingsUsd || 0);
+    const coStatus = meta.computeOptimizerStatus || 'Active';
+
+    const ce = (state && state.costExplorer) || {};
+    const billUsd = Number(ce.lastMonthTotalUsd || 0);
+    const billPct = ce.savingsVsBillPercentage;
+    const billSubHtml = (billUsd > 0 && billPct != null)
+      ? `<div style="font-size:11px; color:#ea580c; font-weight:700; margin-top:4px;">최근 30일 청구액($${Math.round(billUsd).toLocaleString()}) 대비 -${billPct}% 절감 가능</div>`
+      : '';
+
+    let rowsHtml = '';
+    for (const item of items) {
+      const fNorm = String(item.finding || '').trim().toUpperCase().replace(/_/g, '');
+      const isOptSame = fNorm === 'OPTIMIZED' || (
+        item.currentConfig === item.recommendedConfig && Number(item.monthlySavingsUsd || 0) <= 0 && fNorm !== 'UNDERPROVISIONED'
+      );
+      const badgeColor =
+        fNorm === 'UNDERPROVISIONED' ? '#ea580c' :
+        fNorm === 'OVERPROVISIONED' ? '#0891b2' :
+        fNorm === 'NOTOPTIMIZED' ? '#ca8a04' :
+        (item.category === 'Idle' || fNorm === 'IDLE' || fNorm === 'UNATTACHED') ? '#d97706' :
+        isOptSame ? '#059669' :
+        fNorm === 'EXTENDEDSUPPORT' ? '#7c3aed' : '#0891b2';
+
+      const badgeLabel =
+        fNorm === 'UNDERPROVISIONED' ? '🔥 Underprovisioned' :
+        fNorm === 'OVERPROVISIONED' ? '🧊 Overprovisioned' :
+        fNorm === 'NOTOPTIMIZED' ? '⚠️ NotOptimized' :
+        isOptSame ? '✅ Optimized (적정)' :
+        fNorm === 'EXTENDEDSUPPORT' ? '⏳ Extended Support' :
+        (item.category === 'Idle' || fNorm === 'IDLE' || fNorm === 'UNATTACHED') ? `🧹 ${item.finding} (유휴)` : item.finding;
+
+      const specHtml = isOptSame
+        ? `<div style="margin-top:3px;"><span style="display:inline-block; background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; margin-right:4px;">적정 유지</span><span style="color:#059669; font-weight:700; font-size:12px;">스펙 변경 불필요 (현재 구성 최적)</span></div>`
+        : `<div style="margin-top:3px;"><span style="display:inline-block; background:#dc2626; color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; margin-right:4px;">권고</span><span style="color:#ea580c; font-weight:800; font-size:12px;">${item.recommendedConfig}</span></div>`;
+
+      const warnHtml = item.compatibilityWarning
+        ? `<div style="margin-top:4px; padding:4px 7px; border-radius:4px; background:#fef3c7; border:1px solid #fcd34d; color:#92400e; font-size:10px; font-weight:600;">${item.compatibilityWarning}</div>`
+        : '';
+
+      const savHtml = Number(item.monthlySavingsUsd || 0) <= 0
+        ? '<span style="color:#94a3b8;">-</span>'
+        : `<div><span style="font-weight:800; font-size:14px; color:#ea580c;">${fmtUsd(item.monthlySavingsUsd)}</span><span style="font-size:11px; color:#64748b;">/월</span> <span style="display:inline-block; margin-left:4px; padding:1px 7px; border-radius:99px; font-size:11px; font-weight:800; background:#ffedd5; color:#c2410c; border:1px solid #fdba74;">-${item.savingsPercentage}%</span></div><div style="font-size:11px; color:#475569; font-weight:600; margin-top:3px;">${fmtKrw(item.monthlySavingsUsd)}/월 · 연 ${fmtKrw(item.annualSavingsUsd)}</div>`;
+
+      rowsHtml += `
+        <tr>
+          <td><strong>${item.category}</strong></td>
+          <td>
+            <div style="font-weight:600; color:#0f172a;">${item.name}</div>
+            <div style="font-size:11px; color:#64748b; font-family:monospace;">${item.id} | ${item.region || meta.region || '-'} | ${item.environment} | ${item.owner}</div>
+          </td>
+          <td style="white-space:nowrap;"><span style="display:inline-block; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:700; color:#fff; background:${badgeColor};">${badgeLabel}</span></td>
+          <td>
+            <div style="color:#475569; font-size:12px;">현재: ${item.currentConfig}</div>
+            ${specHtml}
+            ${warnHtml}
+          </td>
+          <td style="font-size:12px; color:#334155;">${item.utilizationSummary}<div style="font-size:11px; color:#64748b; margin-top:2px;">${item.actionGuidance || ''}</div></td>
+          <td style="text-align:right; white-space:nowrap;">${savHtml}</td>
+        </tr>`;
+    }
+
+    let catCards = '';
+    const byCat = (state && state.byCategory) || {};
+    for (const catKey of Object.keys(byCat)) {
+      const c = byCat[catKey];
+      catCards += `
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc;">
+          <div style="font-size:12px; color:#64748b; font-weight:600;">${catKey} (${c.optimizableCount}/${c.count} 대상)</div>
+          <div style="font-size:18px; font-weight:700; color:#0f172a; margin-top:4px;">${fmtUsd(c.monthlySavingsUsd)}<span style="font-size:12px; font-weight:400; color:#64748b;"> /월</span></div>
+          <div style="font-size:11px; color:#059669;">연간 ${fmtKrw(c.annualSavingsUsd)} 절감</div>
+        </div>`;
+    }
+
+    const topBar = forWord ? '' : `
+      <div class="no-print">
+        <div><strong>AWS Compute Optimizer 공식 보고서 미리보기 (Serverless Client-Side Engine)</strong> — 우측 버튼을 눌러 PDF로 저장하거나 인쇄할 수 있습니다.</div>
+        <button class="btn-print" onclick="window.print()">🖨️ PDF 저장 / 인쇄하기</button>
+      </div>`;
+
+    return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>AWS Compute Optimizer 비용 최적화 리포트 - ${meta.accountId || 'AWS'}</title>
+<style>
+  @page { size: A4 landscape; margin: 14mm; }
+  body { font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif; color: #0f172a; margin: 0; padding: 32px; background: #ffffff; }
+  .no-print { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; background: #0f172a; color: #fff; padding: 12px 20px; border-radius: 8px; }
+  .btn-print { background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  th { background: #0f172a; color: #ffffff; text-align: left; padding: 10px 12px; font-size: 12px; }
+  td { border-bottom: 1px solid #e2e8f0; padding: 10px 12px; font-size: 13px; vertical-align: top; }
+  @media print { .no-print { display: none !important; } body { padding: 0; } }
+</style>
+</head>
+<body>
+  ${topBar}
+  <div style="border-bottom: 3px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-end;">
+    <div>
+      <div style="font-size:12px; font-weight:700; color:#2563eb; letter-spacing:0.05em;">AWS WELL-ARCHITECTED COST OPTIMIZATION REPORT</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 26px;">AWS Compute Optimizer 비용 최적화 진단 리포트</h1>
+    </div>
+    <div style="text-align:right; font-size:12px; color:#475569;">
+      <div><strong>Account:</strong> ${meta.accountId || '-'} (${meta.accountAlias || '-'}) | <strong>Compute Optimizer:</strong> ${coStatus}</div>
+      <div><strong>Region:</strong> ${meta.region || '-'} | <strong>기준 환율:</strong> ₩${rate.toLocaleString('ko-KR')}/USD (${fxSource})</div>
+      <div><strong>진단 일시:</strong> ${String(meta.collectedAt || '').slice(0, 19).replace('T', ' ')} UTC</div>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+    <div style="border: 1px solid #cbd5e1; border-left: 5px solid #ea580c; border-radius: 8px; padding: 16px;">
+      <div style="font-size:12px; color:#475569;">예상 월간 총 절감액</div>
+      <div style="font-size:26px; font-weight:800; color:#ea580c; margin-top:4px;">${fmtUsd(monthlyUsd)}</div>
+      <div style="font-size:13px; font-weight:600; color:#0f172a;">월 약 ${fmtKrw(monthlyUsd)}</div>
+      ${billSubHtml}
+    </div>
+    <div style="border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 8px; padding: 16px;">
+      <div style="font-size:12px; color:#475569;">예상 연간 총 절감액 (12개월)</div>
+      <div style="font-size:26px; font-weight:800; color:#1d4ed8; margin-top:4px;">${fmtUsd(annualUsd)}</div>
+      <div style="font-size:13px; font-weight:600; color:#0f172a;">연 약 ${fmtKrw(annualUsd)}</div>
+    </div>
+    <div style="border: 1px solid #cbd5e1; border-left: 5px solid #0ea5e9; border-radius: 8px; padding: 16px;">
+      <div style="font-size:12px; color:#475569;">Quick Win (즉시 조치 가능 절감액)</div>
+      <div style="font-size:26px; font-weight:800; color:#0369a1; margin-top:4px;">${fmtUsd(quickUsd)}<span style="font-size:14px;">/월</span></div>
+      <div style="font-size:13px; color:#475569;">난이도 Low 이하 리소스</div>
+    </div>
+    <div style="border: 1px solid #cbd5e1; border-left: 5px solid #dc2626; border-radius: 8px; padding: 16px;">
+      <div style="font-size:12px; color:#475569;">최적화 대상 / 성능 위험 리소스</div>
+      <div style="font-size:26px; font-weight:800; color:#0f172a; margin-top:4px;">${kpis.optimizableResourcesCount || 0}건 <span style="font-size:16px; color:#dc2626;">(위험 ${kpis.performanceRiskCount || 0}건)</span></div>
+      <div style="font-size:13px; color:#475569;">전체 ${kpis.totalResourcesAnalyzed || 0}개 리소스 분석 완료</div>
+    </div>
+  </div>
+
+  <h3 style="margin: 20px 0 10px 0; font-size: 15px;">서비스 카테고리별 절감 요약 (Extended Support · EIP/ALB/NAT · 노후 스냅샷/로그/S3 포함)</h3>
+  <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;">
+    ${catCards}
+  </div>
+
+  <h3 style="margin: 20px 0 8px 0; font-size: 15px;">리소스별 상세 최적화 권고 내역 (절감액 순)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:70px;">유형</th>
+        <th style="width:230px;">리소스명 / 식별자</th>
+        <th style="width:110px;">진단 상태</th>
+        <th style="width:260px;">스펙 변경 권고 및 FinOps 주의사항</th>
+        <th>최근 14일 피크 사용률 및 조치 가이드</th>
+        <th style="width:140px; text-align:right;">예상 월 절감액</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+</body>
+</html>`;
+  }
+
+  function exportReportHtml(state, krwRate = 1384.5, fxSource = 'AWS Invoice 기준환율') {
+    const html = buildExecutiveReportHtml(state, krwRate, fxSource, false);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+    } else {
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `AWS_Compute_Optimizer_Report_${(state.metadata?.accountId || 'export').replace(/[^a-zA-Z0-9_-]/g, '_')}.html`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function exportReportDoc(state, krwRate = 1384.5, fxSource = 'AWS Invoice 기준환율') {
+    const html = '\uFEFF' + buildExecutiveReportHtml(state, krwRate, fxSource, true);
+    const blob = new Blob([html], { type: 'application/msword;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `AWS_Compute_Optimizer_Executive_Report_${(state.metadata?.accountId || 'export').replace(/[^a-zA-Z0-9_-]/g, '_')}.doc`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -765,7 +1136,10 @@ body = r"""
   }
 
   window.normalizeDataset = normalizeDataset;
+  window.mergeRawSnapshots = mergeRawSnapshots;
   window.exportReportCsv = exportReportCsv;
+  window.exportReportHtml = exportReportHtml;
+  window.exportReportDoc = exportReportDoc;
 
 })(typeof window !== 'undefined' ? window : global);
 """
@@ -773,4 +1147,8 @@ body = r"""
 with open('engine.js', 'w', encoding='utf-8') as f:
     f.write(header + body)
 
-print('engine.js written successfully!')
+shutil.copyfile('engine.js', os.path.join('frontend', 'engine.js'))
+if os.path.exists(os.path.join('frontend', 'index.html')):
+    shutil.copyfile(os.path.join('frontend', 'index.html'), 'index.html')
+
+print('engine.js and frontend/engine.js generated & synced successfully!')

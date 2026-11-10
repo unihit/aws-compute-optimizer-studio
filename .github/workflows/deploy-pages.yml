@@ -24,6 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Build & Verify Standalone Engine (Single Source of Truth)
+        run: |
+          python3 build_engine.py
+          node -e "require('./engine.js'); const s = global.normalizeDataset(global.STUDIO_DEMO_RAW); if (!s || !s.items || s.items.length === 0) process.exit(1);"
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
